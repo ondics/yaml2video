@@ -1,22 +1,12 @@
-# Examples
+# v2 examples
 
-```
-examples/
-├── sample_data/                 # Images and audio used by every example
-├── project/example.yaml         # Conventional project/scenes document
-└── templates/
-    ├── appdemo-project.yaml     # Shorthand slides document
-    └── appdemo-template.yaml    # Slide-template definitions
-```
+Each of `simple/`, `normal/`, and `complex/` contains a `video-*.yaml` content document, a matching `template-*.yaml` layout document, and **generated mock media** under `assets/`. The placeholders are labeled graphics and synthetic tones, not real exercise photography or narrated audio.
 
-Run the regular project example from the repository root:
+Run from the repository root (requires FFmpeg with libass):
 
 ```sh
-go run . -n examples/project/example.yaml
+go run . -n -t examples/simple/template-simple.yaml examples/simple/video-simple.yaml
+go run . -t examples/simple/template-simple.yaml examples/simple/video-simple.yaml
 ```
 
-Run the template example from the repository root:
-
-```sh
-go run . -n -t examples/templates/appdemo-template.yaml examples/templates/appdemo-project.yaml
-```
+The second command creates `examples/simple/output.mp4`. Replace `simple` with `normal` or `complex` to try the other examples. Use `-o /path/to/output.mp4` to choose a different output path. To regenerate all placeholder media, run `sh examples/generate-mock-assets.sh` from the repository root. See the [v2 user guide](../docs/user-guide.md) for the format.

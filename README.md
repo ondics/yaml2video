@@ -1,111 +1,48 @@
-# Yaml to Video
+# YAML to Video
 
-`yaml2video` renders declarative YAML projects into MP4 videos using FFmpeg. Define a timeline of scenes, media, text, subtitles, shapes, transitions, and audio—or use reusable slide templates for presentation-style videos.
+`yaml2video` renders v2 video content with a separate v2 layout template into an MP4 using FFmpeg. The video document owns text, images, timing, and audio; the template owns output dimensions, layout, styling, effects, and composition.
 
 ## Requirements
 
-- [Go](https://go.dev/) 1.27.1 or later to build from source.
-- [FFmpeg](https://ffmpeg.org/) on `PATH` to render videos.
-- An FFmpeg build with the `ass` filter (libass enabled) when a project contains text or subtitles.
+- Go 1.27.1 or later to build from source.
+- FFmpeg on `PATH` to render. Text requires an FFmpeg build with the `ass` filter (libass enabled). Some effects and transitions require additional FFmpeg filters.
 
-On macOS, Homebrew provides FFmpeg with `brew install ffmpeg`. Verify the text-rendering requirement with:
-
-```sh
-ffmpeg -hide_banner -filters | grep ass
-```
-
-## Install
-
-Download a binary for your platform from [Releases](https://github.com/ondics/yaml2video/releases), or install the latest module with Go:
+## Build
 
 ```sh
-go install github.com/ondics/yaml2video@latest
-```
-
-For local development:
-
-```sh
-git clone https://github.com/ondics/yaml2video.git
-cd yaml2video
 go build .
 ```
 
-## Quick start
+## Usage
 
-Create `video.yaml`:
-
-```yaml
-version: 1
-video:
-  width: 1280
-  height: 720
-  fps: 30
-  background: "#101010"
-
-defaults:
-  text:
-    font: Arial
-    size: 48
-    color: white
-
-scenes:
-  - id: title
-    duration: 3
-    layers:
-      - type: image
-        path: cover.jpg
-        fit: cover
-        transform: center
-      - type: text
-        text: ["Hello, yaml2video"]
-        transform: bottom-center
-```
-
-Inspect the generated render plan without creating files:
+Create `video.yaml` and `template.yaml` using the [v2 user guide](docs/user-guide.md) or the [simple example](examples/simple/). Media paths in the video file are relative to that file. Supply the template explicitly:
 
 ```sh
-yaml2video -n video.yaml
+./yaml2video -n -t template.yaml video.yaml
+./yaml2video -t template.yaml -o output.mp4 video.yaml
 ```
 
-Render the video (by default, `output.mp4`):
+`-n` validates the documents, bindings, timing, media files, and render plan, and prints the timeline and FFmpeg commands without encoding. `-work-dir DIR` overrides the intermediate-file directory (by default `.yaml2video-v2` next to the video file); `-o FILE` overrides the output file (by default `output.mp4` next to the video file). Flags may also follow the video path.
+
+## Container
+
+From the project root, build and run the image with the Make targets (using `template.yaml` and `video.yaml` in the project root by default):
 
 ```sh
-yaml2video -o welcome.mp4 video.yaml
+make docker-build
+make docker-run
 ```
 
-Intermediate ASS and scene files are stored in `.out/` by default. Change this with `-work-dir`.
+To use the published image instead, run `make docker-run DOCKER_IMAGE=ghcr.io/ondics/yaml2video:main`. Pushes to `main` publish the `main` tag; published releases use their release tag. Set `DOCKER_ARGS` to pass different input paths or flags, for example `make docker-run DOCKER_ARGS="-n -t examples/simple/template-simple.yaml examples/simple/video-simple.yaml"`. The Make target mounts the project root at `/data`, so use paths under that directory for input, output, and `-work-dir` to retain generated files. The image includes FFmpeg and fonts.
 
-## CLI
-
-```text
-yaml2video [-n] [-t template.yaml]... [-work-dir .out] [-o output.mp4] <project.yaml>
-```
-
-The project path can be first or last. Options:
-
-| Option | Description |
-| --- | --- |
-| `-n` | Validate, compile, and print the render summary and exact FFmpeg commands; do not render. |
-| `-o <file>` | Final output path. Defaults to `output.mp4`. |
-| `-work-dir <dir>` | Directory for intermediate ASS and scene files. Defaults to `.out`. |
-| `-t <file>` | Slide-template YAML file. Repeat to compose multiple template catalogs. |
-
-## Documentation
-
-- [Usage and project structure](docs/usage.md)
-- [YAML feature reference](docs/yaml-reference.md)
-- [Slide templates](docs/templates.md)
-- [Runnable examples](examples/README.md)
+The v2 document schemas are in [`docs/video.schema.json`](docs/video.schema.json) and [`docs/template.schema.json`](docs/template.schema.json); see the [format specification](docs/video2yaml-spec.md) and [renderer specification](docs/renderer-spec.md) for details. Unsupported renderer capabilities and nonlocal media URIs are reported as errors, not ignored.
 
 ## Development
 
 ```sh
-make test
-make build
+go test ./...
 ```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and pull-request expectations.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+[MIT](LICENSE)

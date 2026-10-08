@@ -1,0 +1,198 @@
+$schema: ../../docs/template.schema.json
+version: 2
+template_id: office-mobility-dynamic
+description: "A high-energy vertical routine template with branded framing, exercise labels, progress context, and a strong closing card."
+
+format:
+    aspect_ratio: "9:16"
+    width: 1080
+    height: 1920
+    fps: 30
+
+defaults:
+    theme:
+        background: "#111827"
+        text_color: "#F9FAFB"
+        accent_color: "#F6C945"
+        muted_color: "#B7C2D0"
+        panel_color: "#243244"
+    typography:
+        font_family: "Inter"
+        title_size: 92
+        body_size: 50
+        tip_size: 34
+    timing:
+        intro_duration: 3s
+        slide_duration: 3s
+        outro_duration: 3s
+        transition:
+            type: fade
+            duration: 0.25s
+    media:
+        default_fit: cover
+    audio:
+        default_volume: 0.28
+        fade_in: 0.5s
+        fade_out: 1s
+        normalize: true
+        ducking:
+            enabled: true
+            amount: 0.55
+            attack: 0.15s
+            release: 0.4s
+
+composition:
+    sections:
+        - id: intro
+          role: intro
+          source: content.intro
+          transition_out:
+              type: fade
+              duration: 0.25s
+        - id: exercises
+          role: slide
+          source: content.slides
+          repeat: true
+          duration_from: item.duration
+          transition_out:
+              type: fade
+              duration: 0.25s
+        - id: outro
+          role: outro
+          source: content.outro
+
+layout:
+    intro:
+        background: "#111827"
+        logo:
+            placement:
+                anchor: top-left
+                offset_x: 64
+                offset_y: 80
+            max_width_ratio: 0.22
+            fit: contain
+        title:
+            placement:
+                anchor: center
+                offset_y: -90
+            style:
+                font_size: 92
+                weight: bold
+                color: "#F9FAFB"
+                align: center
+            max_lines: 3
+            max_width_ratio: 0.84
+        subtitle:
+            placement:
+                anchor: center
+                offset_y: 170
+            style:
+                font_size: 42
+                color: "#B7C2D0"
+                align: center
+            max_lines: 3
+            max_width_ratio: 0.84
+
+    slide:
+        background: "#111827"
+        logo:
+            placement:
+                anchor: top-left
+                offset_x: 64
+                offset_y: 66
+            max_width_ratio: 0.18
+            fit: contain
+        image:
+            placement:
+                anchor: center
+                offset_y: -70
+            max_width_ratio: 0.9
+            max_height_ratio: 0.46
+            fit: cover
+            shape: rounded-rectangle
+        label:
+            placement:
+                anchor: top-right
+                offset_x: -64
+                offset_y: 76
+            style:
+                font_size: 28
+                weight: bold
+                color: "#F6C945"
+                align: right
+            max_lines: 1
+            max_width_ratio: 0.55
+        index:
+            placement:
+                anchor: bottom-left
+                offset_x: 64
+                offset_y: -100
+            style:
+                font_size: 28
+                weight: bold
+                color: "#B7C2D0"
+                align: left
+            max_lines: 1
+            max_width_ratio: 0.35
+        text:
+            placement:
+                anchor: bottom-center
+                offset_y: -360
+            style:
+                font_size: 52
+                weight: bold
+                color: "#F9FAFB"
+                align: center
+            max_lines: 4
+            max_width_ratio: 0.86
+        tip:
+            placement:
+                anchor: bottom-center
+                offset_y: -180
+            style:
+                font_size: 34
+                color: "#F6C945"
+                align: center
+            max_lines: 3
+            max_width_ratio: 0.86
+
+    outro:
+        background: "#F6C945"
+        logo:
+            placement:
+                anchor: top-center
+                offset_y: 130
+            max_width_ratio: 0.25
+            fit: contain
+        title:
+            placement:
+                anchor: center
+                offset_y: -160
+            style:
+                font_size: 86
+                weight: bold
+                color: "#111827"
+                align: center
+            max_lines: 3
+            max_width_ratio: 0.84
+        text:
+            placement:
+                anchor: center
+                offset_y: 100
+            style:
+                font_size: 44
+                color: "#243244"
+                align: center
+            max_lines: 3
+            max_width_ratio: 0.84
+        cta:
+            placement:
+                anchor: bottom-center
+                offset_y: -230
+            style:
+                font_size: 44
+                weight: bold
+                color: "#111827"
+                align: center
+            max_lines: 2
+            max_width_ratio: 0.84

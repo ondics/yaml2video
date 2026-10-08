@@ -1,0 +1,84 @@
+$schema: ../../docs/video.schema.json
+version: 2
+template: office-mobility-dynamic
+
+metadata:
+    title: "Die 2-Minuten-Büro-Routine"
+    language: de-DE
+    audience: "Büroangestellte mit langen Sitzphasen"
+    description: "Eine kompakte Routine für Nacken, Schultern, Rücken, Hände und Beine."
+    tags: [Büro-Routine, Ergonomie, Nacken, Rücken, Bewegungspause]
+    target_duration_seconds: 27
+
+assets:
+    logo: assets/gesund-am-arbeitsplatz-logo.png
+    music:
+        path: assets/motivierende-pulsierende-musik.mp3
+        volume: 0.28
+        fade_in: 0.5s
+        fade_out: 1s
+
+content:
+    intro:
+        image: assets/heller-arbeitsplatz.png
+        title: "2 Minuten Bewegung"
+        subtitle: "Ohne den Arbeitsplatz zu verlassen"
+        duration: 3s
+
+    slides:
+        - id: atmen
+          image: assets/tief-atmen.png
+          label: "01 · ANKOMMEN"
+          text: "Beide Füße auf den Boden stellen"
+          tip: "Tief einatmen. Schultern beim Ausatmen sinken lassen."
+          alt_text: "Eine Person sitzt aufrecht und atmet bewusst."
+          duration: 3s
+        - id: nacken
+          image: assets/nacken-seitlich.png
+          label: "02 · NACKEN"
+          text: "Kopf sanft zur Seite neigen"
+          tip: "Nicht ziehen. Nur so weit, wie es angenehm bleibt."
+          alt_text: "Eine Person neigt den Kopf vorsichtig zur Seite."
+          duration: 3s
+        - id: schultern
+          image: assets/schulterkreisen.png
+          label: "03 · SCHULTERN"
+          text: "Große Kreise nach hinten machen"
+          tip: "Langsam bewegen und den Atem fließen lassen."
+          alt_text: "Eine Person kreist mit beiden Schultern nach hinten."
+          sound_effects:
+              - path: assets/soft-pop.wav
+                at: 0s
+                volume: 0.45
+          duration: 3s
+        - id: ruecken
+          image: assets/oberkoerper-drehen.png
+          label: "04 · RÜCKEN"
+          text: "Oberkörper vorsichtig nach links und rechts drehen"
+          tip: "Becken bleibt stabil, Bewegung kommt aus dem Oberkörper."
+          alt_text: "Eine sitzende Person dreht den Oberkörper zu beiden Seiten."
+          duration: 4s
+        - id: haende
+          image: assets/finger-strecken.png
+          label: "05 · HÄNDE"
+          text: "Finger weit spreizen und wieder lockerlassen"
+          tip: "Ideal nach langem Tippen oder Schreiben."
+          alt_text: "Eine Person spreizt und entspannt die Finger."
+          audio:
+              path: assets/ruhige-anleitung-haende.wav
+              volume: 0.8
+          duration: 3s
+        - id: beine
+          image: assets/beine-strecken.png
+          label: "06 · BEINE"
+          text: "Beine abwechselnd nach vorne strecken"
+          tip: "Je Seite fünf ruhige Wiederholungen."
+          alt_text: "Eine sitzende Person streckt abwechselnd die Beine."
+          duration: 3s
+
+    outro:
+        image: assets/entspannter-arbeitsplatz.png
+        title: "Jetzt bist du dran."
+        text: "Plane deine nächste Bewegungspause gleich ein."
+        cta: "Speichern · Teilen · Mitmachen"
+        duration: 3s

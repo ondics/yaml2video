@@ -42,20 +42,16 @@ func assDocument(width, height int, scene ScenePlan) string {
 			nil,
 			false,
 		)
-		writeASSDialogue(
-			&document,
-			0,
-			scene.Duration,
-			5,
-			layer.X+layer.Width/2,
-			layer.Y+layer.Height/2,
-			text,
-			nil,
-			layer.Opacity,
-			false,
-			0,
-			0,
-		)
+		tags, fadeIn, fadeOut := textEffectTags(layer.Effects)
+		if tags != "" || fadeIn > 0 || fadeOut > 0 {
+			prefix := fmt.Sprintf("{\\an5\\pos(%d,%d)%s", layer.X+layer.Width/2, layer.Y+layer.Height/2, tags)
+			if fadeIn > 0 || fadeOut > 0 {
+				prefix += fmt.Sprintf("\\fad(%d,%d)", fadeIn, fadeOut)
+			}
+			fmt.Fprintf(&document, "Dialogue: 0,%s,%s,Default,,0,0,0,,%s}%s\n", assTime(0), assTime(scene.Duration), prefix, text)
+		} else {
+			writeASSDialogue(&document, 0, scene.Duration, 5, layer.X+layer.Width/2, layer.Y+layer.Height/2, text, nil, layer.Opacity, false, 0, 0)
+		}
 	}
 
 	for _, subtitle := range scene.Subtitles {

@@ -1,0 +1,40 @@
+$schema: ../../docs/video.schema.json
+version: 2
+template: office-mobility-simple
+
+metadata:
+    title: "Drei kleine Bewegungen fürs Büro"
+    language: de-DE
+    audience: "Büroarbeiterinnen und Büroarbeiter"
+    description: "Ein kurzer Impuls für mehr Bewegung während des Arbeitstags."
+    tags: [Büro, Bewegung, Gesundheit, Arbeitsplatz]
+    target_duration_seconds: 15
+
+assets:
+    logo: assets/gesund-am-arbeitsplatz-logo.png
+    music:
+        path: assets/ruhiger-beat.mp3
+
+content:
+    intro:
+        title: "Beweg dich kurz!"
+        subtitle: "Drei einfache Übungen am Arbeitsplatz"
+
+    slides:
+        - image: assets/schulterkreisen.png
+          text: "Schultern kreisen"
+          tip: "10-mal langsam nach hinten kreisen"
+          duration: 3s
+        - image: assets/nacken-seitlich.png
+          text: "Nacken entspannen"
+          tip: "Je Seite 10 Sekunden halten"
+          duration: 3s
+        - image: assets/beine-strecken.png
+          text: "Beine strecken"
+          tip: "Füße abwechselnd nach vorne schieben"
+          duration: 3s
+
+    outro:
+        title: "Dein Körper dankt es dir."
+        text: "Eine kurze Pause reicht schon."
+        cta: "Speichern und später wiederholen"

@@ -1,0 +1,377 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/yaml2video/v2/template.schema.json",
+  "title": "yaml2video v2 template document",
+  "description": "A renderer-independent template defining defaults, composition, and visual layout for a content-focused video document.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "version", "template_id", "description", "format", "defaults", "composition", "layout"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"const": 2},
+    "template_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
+    "description": {"type": "string", "minLength": 1},
+    "format": {"$ref": "#/$defs/format"},
+    "defaults": {"$ref": "#/$defs/defaults"},
+    "composition": {"$ref": "#/$defs/composition"},
+    "layout": {"$ref": "#/$defs/layout"}
+  },
+  "$defs": {
+    "format": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aspect_ratio", "width", "height", "fps"],
+      "properties": {
+        "aspect_ratio": {
+          "type": "string",
+          "enum": ["9:16", "1:1", "16:9", "4:5"]
+        },
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "fps": {"type": "integer", "minimum": 1, "maximum": 240}
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["theme", "timing"],
+      "properties": {
+        "theme": {"$ref": "#/$defs/theme"},
+        "typography": {"$ref": "#/$defs/typography"},
+        "timing": {"$ref": "#/$defs/timing"},
+        "media": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "default_fit": {"type": "string", "enum": ["cover", "contain"]},
+            "default_position": {"$ref": "#/$defs/placement"}
+          }
+        },
+        "audio": {"$ref": "#/$defs/audio"}
+      }
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["background", "text_color", "accent_color"],
+      "properties": {
+        "background": {"$ref": "#/$defs/color"},
+        "text_color": {"$ref": "#/$defs/color"},
+        "accent_color": {"$ref": "#/$defs/color"},
+        "muted_color": {"$ref": "#/$defs/color"},
+        "panel_color": {"$ref": "#/$defs/color"}
+      }
+    },
+    "typography": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "font_family": {"type": "string", "minLength": 1},
+        "title_size": {"type": "integer", "minimum": 1},
+        "body_size": {"type": "integer", "minimum": 1},
+        "tip_size": {"type": "integer", "minimum": 1}
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intro_duration", "slide_duration", "outro_duration", "transition"],
+      "properties": {
+        "intro_duration": {"$ref": "#/$defs/duration"},
+        "slide_duration": {"$ref": "#/$defs/duration"},
+        "outro_duration": {"$ref": "#/$defs/duration"},
+        "transition": {"$ref": "#/$defs/transition"}
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "duration"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "cut", "fade", "dissolve", "wipe-left", "wipe-right", "wipe-up", "wipe-down",
+            "slide-left", "slide-right", "slide-up", "slide-down", "circle-open", "circle-close",
+            "radial", "pixelize", "zoom-in", "cover", "reveal", "blur"
+          ]
+        },
+        "duration": {"$ref": "#/$defs/duration"}
+      }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default_volume": {"type": "number", "minimum": 0, "maximum": 1},
+        "fade_in": {"$ref": "#/$defs/duration"},
+        "fade_out": {"$ref": "#/$defs/duration"}
+        ,"normalize": {"type": "boolean", "default": true}
+        ,"ducking": {"$ref": "#/$defs/ducking"}
+      }
+    },
+    "ducking": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean", "default": false},
+        "amount": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.65},
+        "attack": {"$ref": "#/$defs/duration"},
+        "release": {"$ref": "#/$defs/duration"}
+      }
+    },
+    "composition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sections"],
+      "properties": {
+        "sections": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/section"}
+        }
+      }
+    },
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "source"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+        },
+        "role": {"type": "string", "enum": ["intro", "slide", "outro"]},
+        "source": {
+          "type": "string",
+          "enum": ["content.intro", "content.slides", "content.outro"]
+        },
+        "repeat": {"type": "boolean", "default": false},
+        "duration_from": {"type": "string", "enum": ["item.duration"]},
+        "default_duration": {"$ref": "#/$defs/duration"},
+        "transition_out": {"$ref": "#/$defs/transition"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"role": {"const": "slide"}}},
+          "then": {
+            "required": ["repeat"],
+            "properties": {
+              "source": {"const": "content.slides"},
+              "repeat": {"const": true}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"role": {"const": "intro"}}},
+          "then": {"properties": {"source": {"const": "content.intro"}}}
+        },
+        {
+          "if": {"properties": {"role": {"const": "outro"}}},
+          "then": {"properties": {"source": {"const": "content.outro"}}}
+        }
+      ]
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intro", "slide", "outro"],
+      "properties": {
+        "intro": {"$ref": "#/$defs/intro_layout"},
+        "slide": {"$ref": "#/$defs/slide_layout"},
+        "outro": {"$ref": "#/$defs/outro_layout"}
+      }
+    },
+    "intro_layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["background", "title"],
+      "properties": {
+        "background": {"$ref": "#/$defs/color"},
+        "logo": {"$ref": "#/$defs/media_element"},
+        "title": {"$ref": "#/$defs/text_element"},
+        "subtitle": {"$ref": "#/$defs/text_element"}
+      }
+    },
+    "slide_layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["background", "image", "text"],
+      "properties": {
+        "background": {"$ref": "#/$defs/color"},
+        "logo": {"$ref": "#/$defs/media_element"},
+        "image": {"$ref": "#/$defs/media_element"},
+        "label": {"$ref": "#/$defs/text_element"},
+        "text": {"$ref": "#/$defs/text_element"},
+        "tip": {"$ref": "#/$defs/text_element"},
+        "index": {"$ref": "#/$defs/text_element"},
+        "progress": {"$ref": "#/$defs/progress_element"}
+      }
+    },
+    "outro_layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["background", "cta"],
+      "properties": {
+        "background": {"$ref": "#/$defs/color"},
+        "logo": {"$ref": "#/$defs/media_element"},
+        "title": {"$ref": "#/$defs/text_element"},
+        "text": {"$ref": "#/$defs/text_element"},
+        "cta": {"$ref": "#/$defs/text_element"}
+      }
+    },
+    "text_element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["placement"],
+      "properties": {
+        "placement": {"$ref": "#/$defs/placement"},
+        "style": {"$ref": "#/$defs/text_style"},
+        "effects": {"$ref": "#/$defs/effects"},
+        "max_lines": {"type": "integer", "minimum": 1},
+        "max_width_ratio": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "visible": {"type": "boolean", "default": true}
+      }
+    },
+    "media_element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["placement"],
+      "properties": {
+        "placement": {"$ref": "#/$defs/placement"},
+        "fit": {"type": "string", "enum": ["cover", "contain"]},
+        "shape": {"type": "string", "enum": ["rectangle", "rounded-rectangle", "circle"]},
+        "effects": {"$ref": "#/$defs/effects"},
+        "max_width_ratio": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "max_height_ratio": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "visible": {"type": "boolean", "default": true}
+      }
+    },
+    "progress_element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["placement"],
+      "properties": {
+        "placement": {"$ref": "#/$defs/placement"},
+        "color": {"$ref": "#/$defs/color"},
+        "background_color": {"$ref": "#/$defs/color"},
+        "width_ratio": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "thickness": {"type": "number", "exclusiveMinimum": 0},
+        "visible": {"type": "boolean", "default": true}
+      }
+    },
+    "text_style": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "font_family": {"type": "string", "minLength": 1},
+        "font_size": {"type": "integer", "minimum": 1},
+        "weight": {"type": "string", "enum": ["normal", "medium", "bold"]},
+        "color": {"$ref": "#/$defs/color"},
+        "align": {"type": "string", "enum": ["left", "center", "right"]},
+        "line_spacing": {"type": "number", "minimum": 0}
+      }
+    },
+    "effects": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/effect"}
+    },
+    "effect": {
+      "oneOf": [
+        {"$ref": "#/$defs/text_shadow"},
+        {"$ref": "#/$defs/text_glow"},
+        {"$ref": "#/$defs/text_outline"},
+        {"$ref": "#/$defs/glass_panel"},
+        {"$ref": "#/$defs/pan_zoom"},
+        {"$ref": "#/$defs/color_filter"},
+        {"$ref": "#/$defs/vignette"},
+        {"$ref": "#/$defs/blur"},
+        {"$ref": "#/$defs/fade"}
+      ]
+    },
+    "text_shadow": {
+      "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": {
+        "type": {"const": "text_shadow"}, "color": {"$ref": "#/$defs/color"},
+        "opacity": {"type": "number", "minimum": 0, "maximum": 1}, "offset_x": {"type": "number"},
+        "offset_y": {"type": "number"}, "blur": {"type": "number", "minimum": 0}
+      }
+    },
+    "text_glow": {
+      "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": {
+        "type": {"const": "text_glow"}, "color": {"$ref": "#/$defs/color"},
+        "opacity": {"type": "number", "minimum": 0, "maximum": 1}, "blur": {"type": "number", "minimum": 0}
+      }
+    },
+    "text_outline": {
+      "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": {
+        "type": {"const": "text_outline"}, "color": {"$ref": "#/$defs/color"},
+        "opacity": {"type": "number", "minimum": 0, "maximum": 1}, "width": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "glass_panel": {
+      "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": {
+        "type": {"const": "glass_panel"}, "color": {"$ref": "#/$defs/color"},
+        "opacity": {"type": "number", "minimum": 0, "maximum": 1}, "blur": {"type": "number", "minimum": 0},
+        "padding": {"oneOf": [{"type": "number", "minimum": 0}, {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "minimum": 0}}]}
+      }
+    },
+    "pan_zoom": {
+      "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": {
+        "type": {"const": "pan_zoom"}, "from_scale": {"type": "number", "minimum": 1},
+        "to_scale": {"type": "number", "minimum": 1}, "from_anchor": {"$ref": "#/$defs/anchor"},
+        "to_anchor": {"$ref": "#/$defs/anchor"}
+      }
+    },
+    "color_filter": {
+      "type": "object", "additionalProperties": false, "required": ["type", "preset"],
+      "properties": {
+        "type": {"const": "color_filter"}, "preset": {"type": "string", "enum": ["grayscale", "sepia", "warm", "cool", "high-contrast"]},
+        "intensity": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "vignette": {
+      "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": {"type": {"const": "vignette"}, "color": {"$ref": "#/$defs/color"}, "opacity": {"type": "number", "minimum": 0, "maximum": 1}}
+    },
+    "blur": {
+      "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": {"type": {"const": "blur"}, "radius": {"type": "number", "minimum": 0}}
+    },
+    "fade": {
+      "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": {"type": {"const": "fade"}, "fade_in": {"$ref": "#/$defs/duration"}, "fade_out": {"$ref": "#/$defs/duration"}}
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor"],
+      "properties": {
+        "anchor": {"$ref": "#/$defs/anchor"},
+        "offset_x": {"type": "number"},
+        "offset_y": {"type": "number"}
+      }
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^(?:#[0-9A-Fa-f]{3,8}|[A-Za-z]+|rgba?\\([^)]*\\))$"
+    },
+    "anchor": {
+      "type": "string",
+      "enum": ["top-left", "top-center", "top-right", "center-left", "center", "center-right", "bottom-left", "bottom-center", "bottom-right"]
+    },
+    "duration": {
+      "oneOf": [
+        {"type": "number", "exclusiveMinimum": 0},
+        {"type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+)?s$"}
+      ]
+    }
+  }
+}

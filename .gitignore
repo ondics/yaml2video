@@ -2,6 +2,8 @@
 .dist/
 .gocache
 tmp/
+examples/*/.yaml2video-v2/
+examples/*/output.mp4
 
 # Environment
 .env*

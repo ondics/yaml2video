@@ -76,6 +76,9 @@ func (p *Plan) createWorkDirectories() error {
 }
 
 func (p *Plan) streams() ([]*ffmpeg.Stream, error) {
+	if err := p.validateRenderPlan(); err != nil {
+		return nil, err
+	}
 	streams := make([]*ffmpeg.Stream, 0, len(p.Scenes)+1)
 
 	for _, scene := range p.Scenes {
@@ -146,11 +149,15 @@ func applyVisualLayer(base *ffmpeg.Stream, plan *Plan, scene ScenePlan, layer La
 func mediaLayerStream(plan *Plan, scene ScenePlan, layer LayerPlan) *ffmpeg.Stream {
 	input := mediaInput(plan, scene, layer)
 	input = fitLayerStream(input, layer)
+	input = applyMediaEffects(input, plan, scene, layer)
 
 	if layer.Opacity != 1 {
 		input = input.
 			Filter("format", ffmpeg.Args{"rgba"}).
 			ColorChannelMixer(ffmpeg.KwArgs{"aa": layer.Opacity})
+	}
+	if layer.Shape == "circle" || layer.Shape == "rounded-rectangle" {
+		input = maskAlpha(input, shapeMask(layer))
 	}
 
 	return input
@@ -203,9 +210,26 @@ func fitLayerStream(input *ffmpeg.Stream, layer LayerPlan) *ffmpeg.Stream {
 			Filter("crop", ffmpeg.Args{width, height})
 	}
 
+	padX, padY := containPadding(layer.Anchor)
 	return input.
-		Filter("scale", ffmpeg.Args{width, height, "force_original_aspect_ratio=decrease"}).
-		Filter("pad", ffmpeg.Args{width, height, "(ow-iw)/2", "(oh-ih)/2", "color=black@0"})
+		Filter("scale", ffmpeg.Args{width, height, "force_original_aspect_ratio=decrease:force_divisible_by=2"}).
+		Filter("format", ffmpeg.Args{"rgba"}).
+		Filter("pad", ffmpeg.Args{width, height, padX, padY, "color=black@0"})
+}
+
+func containPadding(anchor string) (string, string) {
+	x, y := "(ow-iw)/2", "(oh-ih)/2"
+	if strings.HasSuffix(anchor, "-left") {
+		x = "0"
+	} else if strings.HasSuffix(anchor, "-right") {
+		x = "ow-iw"
+	}
+	if strings.HasPrefix(anchor, "top-") {
+		y = "0"
+	} else if strings.HasPrefix(anchor, "bottom-") {
+		y = "oh-ih"
+	}
+	return x, y
 }
 
 func mediaEOFAction(layer LayerPlan) string {
@@ -217,17 +241,30 @@ func mediaEOFAction(layer LayerPlan) string {
 }
 
 func drawTextBackgrounds(base *ffmpeg.Stream, layer LayerPlan) *ffmpeg.Stream {
-	if layer.Background != nil {
-		background := *layer.Background
-		base = drawTextBackground(
-			base,
-			layer.X-background.PaddingX,
-			layer.Y-background.PaddingY,
-			layer.Width+2*background.PaddingX,
-			layer.Height+2*background.PaddingY,
-			background,
-			layer.Opacity,
-		)
+	backgroundPlan := layer.Background
+	glassBlur := 0.0
+	for _, effect := range layer.Effects {
+		if effect.Type == "glass_panel" {
+			glassBlur = effect.Blur
+			color := effect.Color
+			if color == "" {
+				color = "0xFFFFFF"
+			}
+			if after, ok := strings.CutPrefix(color, "#"); ok {
+				color = "0x" + after
+			}
+			backgroundPlan = &TextBackgroundPlan{Color: color, Opacity: effect.Opacity, PaddingX: int(effect.PaddingX), PaddingY: int(effect.PaddingY)}
+		}
+	}
+
+	if backgroundPlan != nil {
+		background := *backgroundPlan
+		x, y := layer.X-background.PaddingX, layer.Y-background.PaddingY
+		width, height := layer.Width+2*background.PaddingX, layer.Height+2*background.PaddingY
+		if glassBlur > 0 {
+			base = blurPanel(base, x, y, width, height, glassBlur)
+		}
+		base = drawTextBackground(base, x, y, width, height, background, layer.Opacity)
 	}
 
 	for _, box := range layer.ItemBackgrounds {
@@ -272,7 +309,7 @@ func (p *Plan) buildFinal() (*ffmpeg.Stream, error) {
 		transition := boundaryFor(p.Transitions, sceneIndex-1)
 		nextScene := ffmpeg.Input(p.Scenes[sceneIndex].Output)
 
-		if transition == nil {
+		if transition == nil || transition.Type == "cut" {
 			visual = ffmpeg.Concat([]*ffmpeg.Stream{visual, nextScene}, ffmpeg.KwArgs{"v": 1, "a": 0})
 			continue
 		}
@@ -282,7 +319,7 @@ func (p *Plan) buildFinal() (*ffmpeg.Stream, error) {
 			"xfade",
 			nil,
 			ffmpeg.KwArgs{
-				"transition": transition.Type,
+				"transition": xfadeType(transition.Type),
 				"duration":   ffTime(transition.Duration),
 				"offset":     ffTime(p.xfadeOffset(sceneIndex, transition)),
 			},
@@ -309,7 +346,7 @@ func (p *Plan) xfadeOffset(sceneIndex int, transition *BoundaryTransition) time.
 		durationBeforeScene += p.Scenes[index].Duration
 
 		if index < sceneIndex-1 {
-			if previous := boundaryFor(p.Transitions, index); previous != nil {
+			if previous := boundaryFor(p.Transitions, index); previous != nil && previous.Type != "cut" {
 				durationBeforeScene -= previous.Duration
 			}
 		}
@@ -320,14 +357,35 @@ func (p *Plan) xfadeOffset(sceneIndex int, transition *BoundaryTransition) time.
 
 func (p *Plan) buildAudio() *ffmpeg.Stream {
 	tracks := make([]*ffmpeg.Stream, 0)
-
-	if p.Music != nil {
-		tracks = append(tracks, p.musicTrack())
-	}
+	foregroundTracks := make([]*ffmpeg.Stream, 0)
 	for _, scene := range p.Scenes {
 		for _, layer := range scene.Audio {
-			tracks = append(tracks, audioLayerTrack(scene, layer))
+			track := audioLayerTrack(scene, layer)
+			if layer.SoundEffect {
+				tracks = append(tracks, track)
+			} else {
+				foregroundTracks = append(foregroundTracks, track)
+			}
 		}
+	}
+
+	if p.Music != nil {
+		music := p.musicTrack()
+		if d := p.Music.Ducking; d != nil && d.Enabled && len(foregroundTracks) > 0 {
+			foreground := mixAudio(foregroundTracks, p.Duration).ASplit()
+			music = ffmpeg.Filter([]*ffmpeg.Stream{music, foreground.Get("1").Filter("apad", nil, ffmpeg.KwArgs{"whole_dur": ffTime(p.Duration)})}, "sidechaincompress", nil, ffmpeg.KwArgs{
+				"threshold": 0.1, "ratio": 1 + d.Amount*19,
+				"attack": float64(d.Attack) / float64(time.Millisecond), "release": float64(d.Release) / float64(time.Millisecond),
+			})
+
+			// The sidechain also feeds the audible mix; split it before compression.
+			tracks = append(tracks, foreground.Get("0"), music)
+		} else {
+			tracks = append(tracks, foregroundTracks...)
+			tracks = append(tracks, music)
+		}
+	} else {
+		tracks = append(tracks, foregroundTracks...)
 	}
 
 	switch len(tracks) {
@@ -336,19 +394,32 @@ func (p *Plan) buildAudio() *ffmpeg.Stream {
 	case 1:
 		return tracks[0]
 	default:
-		return ffmpeg.Filter(tracks, "amix", nil, ffmpeg.KwArgs{
-			"inputs":             len(tracks),
-			"duration":           "longest",
-			"dropout_transition": 0,
-		}).Filter("atrim", nil, ffmpeg.KwArgs{"duration": ffTime(p.Duration)})
+		return mixAudio(tracks, p.Duration)
 	}
 }
 
+func mixAudio(tracks []*ffmpeg.Stream, duration time.Duration) *ffmpeg.Stream {
+	if len(tracks) == 1 {
+		return tracks[0]
+	}
+
+	return ffmpeg.Filter(tracks, "amix", nil, ffmpeg.KwArgs{
+		"inputs": len(tracks), "duration": "longest", "dropout_transition": 0,
+	}).Filter("atrim", nil, ffmpeg.KwArgs{"duration": ffTime(duration)})
+}
+
 func (p *Plan) musicTrack() *ffmpeg.Stream {
-	music := ffmpeg.Input(p.Music.Path, ffmpeg.KwArgs{"stream_loop": -1}).
-		Audio().
-		Filter("volume", nil, ffmpeg.KwArgs{"volume": p.Music.Volume}).
-		Filter("atrim", nil, ffmpeg.KwArgs{"duration": ffTime(p.Duration)})
+	music := ffmpeg.Input(p.Music.Path, ffmpeg.KwArgs{"stream_loop": -1}).Audio().
+		Filter("atrim", nil, ffmpeg.KwArgs{"duration": ffTime(p.Duration)}).
+		Filter("asetpts", ffmpeg.Args{"PTS-STARTPTS"})
+	if p.Music.Normalize {
+		music = music.Filter("loudnorm", nil, ffmpeg.KwArgs{"I": -16, "TP": -1.5, "LRA": 11})
+	}
+
+	music = music.Filter("volume", nil, ffmpeg.KwArgs{"volume": p.Music.Volume})
+	if p.Music.FadeIn > 0 {
+		music = music.Filter("afade", nil, ffmpeg.KwArgs{"t": "in", "st": 0, "d": ffTime(p.Music.FadeIn)})
+	}
 
 	if p.Music.FadeOut > 0 {
 		music = music.Filter("afade", nil, ffmpeg.KwArgs{
@@ -367,16 +438,22 @@ func audioLayerTrack(scene ScenePlan, layer AudioLayerPlan) *ffmpeg.Stream {
 		inputArgs["ss"] = ffTime(layer.SourceOffset)
 	}
 
-	return ffmpeg.Input(layer.Path, inputArgs).
-		Audio().
-		Filter("atrim", nil, ffmpeg.KwArgs{
-			"duration": ffTime(mediaDuration(layer.Duration, scene.Duration)),
-		}).
-		Filter("asetpts", ffmpeg.Args{"PTS-STARTPTS"}).
-		Filter("adelay", nil, ffmpeg.KwArgs{
-			"delays": scene.Start.Milliseconds(),
-			"all":    1,
-		}).
+	duration := mediaDuration(layer.Duration, scene.Duration-layer.Offset)
+	input := ffmpeg.Input(layer.Path, inputArgs).Audio().
+		Filter("atrim", nil, ffmpeg.KwArgs{"duration": ffTime(duration)}).
+		Filter("asetpts", ffmpeg.Args{"PTS-STARTPTS"})
+
+	if layer.FadeIn > 0 {
+		input = input.Filter("afade", nil, ffmpeg.KwArgs{"t": "in", "st": 0, "d": ffTime(layer.FadeIn)})
+	}
+
+	if layer.FadeOut > 0 {
+		input = input.Filter("afade", nil, ffmpeg.KwArgs{
+			"t": "out", "st": ffTime(duration - layer.FadeOut), "d": ffTime(layer.FadeOut),
+		})
+	}
+
+	return input.Filter("adelay", nil, ffmpeg.KwArgs{"delays": (scene.Start + layer.Offset).Milliseconds(), "all": 1}).
 		Filter("volume", nil, ffmpeg.KwArgs{"volume": layer.Volume})
 }
 

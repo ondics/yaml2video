@@ -1,0 +1,61 @@
+$schema: ../../docs/video.schema.json
+version: 2
+template: office-mobility-standard
+
+metadata:
+    title: "60 Sekunden Schreibtisch-Pause"
+    language: de-DE
+    audience: "Menschen mit sitzender Bildschirmarbeit"
+    description: "Ein freundlicher Social-Media-Impuls mit vier kurzen Bewegungsübungen."
+    tags: [Schreibtisch, Pause, Rücken, Schultern, Social Media]
+    target_duration_seconds: 19
+
+assets:
+    logo: assets/gesund-am-arbeitsplatz-logo.png
+    music:
+        path: assets/leichter-optimistischer-beat.mp3
+        volume: 0.35
+        fade_out: 1s
+
+content:
+    intro:
+        title: "60 Sekunden für deinen Körper"
+        subtitle: "Direkt am Schreibtisch"
+        image: assets/intro-schreibtisch.png
+        duration: 3s
+
+    slides:
+        - id: schultern
+          image: assets/schulterkreisen.png
+          label: "SCHULTERN"
+          text: "Schultern hochziehen und lösen"
+          tip: "5 Wiederholungen"
+          alt_text: "Eine Person hebt und senkt beide Schultern."
+          duration: 3s
+        - id: brust
+          image: assets/brust-oeffnen.png
+          label: "BRUST"
+          text: "Hände hinter dem Rücken verschränken"
+          tip: "Brust öffnen und ruhig atmen"
+          alt_text: "Eine Person öffnet die Brust mit verschränkten Händen."
+          duration: 3s
+        - id: handgelenke
+          image: assets/handgelenke.png
+          label: "HANDGELENKE"
+          text: "Handgelenke langsam kreisen"
+          tip: "Je Richtung 10 Sekunden"
+          alt_text: "Eine Person bewegt beide Handgelenke kreisförmig."
+          duration: 3s
+        - id: beine
+          image: assets/beine-strecken.png
+          label: "BEINE"
+          text: "Ein Bein ausstrecken und wechseln"
+          tip: "Fersen kurz am Boden halten"
+          alt_text: "Eine sitzende Person streckt abwechselnd ein Bein aus."
+          duration: 3s
+
+    outro:
+        title: "Kleine Bewegung. Großer Unterschied."
+        text: "Mach die nächste Pause aktiv."
+        cta: "Folge für weitere Büro-Tipps"
+        duration: 3s

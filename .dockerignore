@@ -1,0 +1,10 @@
+.git
+.github
+.gocache
+.out
+.dist
+tmp
+.env*
+**/.yaml2video-v2
+**/output.mp4
+.DS_Store

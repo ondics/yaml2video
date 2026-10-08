@@ -31,6 +31,7 @@ func (p *Padding) UnmarshalYAML(node ast.Node) error {
 	if err := yaml.NodeToValue(node, &values); err != nil {
 		return fmt.Errorf("padding must be a non-negative integer or [x, y] pair")
 	}
+
 	if len(values) != 2 {
 		return fmt.Errorf("padding pair must contain exactly two values")
 	}

@@ -47,6 +47,7 @@ func wrapText(value string, lineLength, maxCharacters int) (string, int) {
 			lineLength = 0
 			pendingWhitespace = ""
 		}
+
 		if pendingWhitespace != "" && lineLength > 0 {
 			result.WriteString(pendingWhitespace)
 			lineLength += len(pendingWhitespace)

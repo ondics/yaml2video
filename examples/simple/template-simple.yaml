@@ -1,0 +1,150 @@
+$schema: ../../docs/template.schema.json
+version: 2
+template_id: office-mobility-simple
+description: "A minimal vertical social-media slideshow for one short office-mobility impulse."
+
+format:
+    aspect_ratio: "9:16"
+    width: 1080
+    height: 1920
+    fps: 30
+
+defaults:
+    theme:
+        background: "#101820"
+        text_color: "#FFFFFF"
+        accent_color: "#7DE2A8"
+        muted_color: "#B9C5C8"
+    typography:
+        font_family: "Inter"
+        title_size: 88
+        body_size: 52
+        tip_size: 38
+    timing:
+        intro_duration: 3s
+        slide_duration: 3s
+        outro_duration: 3s
+        transition:
+            type: fade
+            duration: 0.35s
+    media:
+        default_fit: contain
+    audio:
+        default_volume: 0.3
+        fade_in: 0.2s
+        fade_out: 0.8s
+
+composition:
+    sections:
+        - id: intro
+          role: intro
+          source: content.intro
+        - id: exercises
+          role: slide
+          source: content.slides
+          repeat: true
+          duration_from: item.duration
+        - id: outro
+          role: outro
+          source: content.outro
+
+layout:
+    intro:
+        background: "#101820"
+        logo:
+            placement:
+                anchor: top-center
+                offset_y: 120
+            max_width_ratio: 0.28
+            fit: contain
+        title:
+            placement:
+                anchor: center
+            style:
+                font_size: 88
+                weight: bold
+                color: "#FFFFFF"
+                align: center
+            max_lines: 3
+            max_width_ratio: 0.82
+        subtitle:
+            placement:
+                anchor: bottom-center
+                offset_y: -220
+            style:
+                font_size: 42
+                color: "#B9C5C8"
+                align: center
+            max_lines: 2
+            max_width_ratio: 0.82
+
+    slide:
+        background: "#101820"
+        image:
+            placement:
+                anchor: top-center
+                offset_y: 170
+            max_width_ratio: 0.82
+            max_height_ratio: 0.48
+            fit: contain
+        text:
+            placement:
+                anchor: center
+                offset_y: 260
+            style:
+                font_size: 58
+                weight: bold
+                color: "#FFFFFF"
+                align: center
+            max_lines: 3
+            max_width_ratio: 0.82
+        tip:
+            placement:
+                anchor: bottom-center
+                offset_y: -190
+            style:
+                font_size: 38
+                color: "#7DE2A8"
+                align: center
+            max_lines: 3
+            max_width_ratio: 0.84
+
+    outro:
+        background: "#101820"
+        logo:
+            placement:
+                anchor: top-center
+                offset_y: 160
+            max_width_ratio: 0.28
+            fit: contain
+        title:
+            placement:
+                anchor: center
+            style:
+                font_size: 76
+                weight: bold
+                color: "#FFFFFF"
+                align: center
+            max_lines: 3
+            max_width_ratio: 0.84
+        text:
+            placement:
+                anchor: center
+                offset_y: 230
+            style:
+                font_size: 42
+                color: "#B9C5C8"
+                align: center
+            max_lines: 2
+            max_width_ratio: 0.84
+        cta:
+            placement:
+                anchor: bottom-center
+                offset_y: -220
+            style:
+                font_size: 42
+                weight: bold
+                color: "#7DE2A8"
+                align: center
+            max_lines: 2
+            max_width_ratio: 0.84

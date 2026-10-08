@@ -32,6 +32,7 @@ scenes:
 		{Top: 0.2, Bottom: 0.2, Left: 0.1, Right: 0.1},
 		{Top: 0.1, Bottom: 0.2, Left: 0.3, Right: 0.1},
 	}
+
 	for index, expected := range trims {
 		actual := *value.Scenes[0].Layers[index].Trim
 		if actual != expected {

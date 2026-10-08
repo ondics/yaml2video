@@ -44,6 +44,9 @@ type LayerPlan struct {
 	Kind string
 	Path string
 	Fit  string
+	// Anchor aligns contained media within its maximum-width/height box.
+	// Empty retains centered positioning for plans without a placement anchor.
+	Anchor string
 
 	X      int
 	Y      int
@@ -62,14 +65,48 @@ type LayerPlan struct {
 	Spans           []TextSpan
 	Background      *TextBackgroundPlan
 	ItemBackgrounds []TextBackgroundBox
+	// Effects are applied in order to this layer, not to the scene as a whole.
+	Effects []EffectPlan
+	Shape   string // "", "rectangle", "rounded-rectangle", or "circle" for media layers.
+	// CornerRadius sets rounded-rectangle corner radius in pixels; zero uses 1/12 of the smaller dimension.
+	CornerRadius int
+	// AltText describes the image/video for accessibility; it is metadata only, not burnt into video.
+	AltText string
 }
 
-// AudioLayerPlan describes audio placed at the beginning of its scene.
+// EffectPlan describes one v2 semantic effect. Fields not relevant to Type are ignored.
+// Colors use FFmpeg color syntax (e.g. 0xRRGGBB or #RRGGBB).
+type EffectPlan struct {
+	Type       string
+	Color      string
+	Opacity    float64
+	OffsetX    float64
+	OffsetY    float64
+	Blur       float64
+	Width      float64
+	PaddingX   float64
+	PaddingY   float64
+	FromScale  float64
+	ToScale    float64
+	FromAnchor string
+	ToAnchor   string
+	Preset     string
+	Intensity  float64
+	Radius     float64
+	FadeIn     time.Duration
+	FadeOut    time.Duration
+}
+
+// AudioLayerPlan describes audio within its scene.
 type AudioLayerPlan struct {
 	Path         string
 	Volume       float64
 	SourceOffset time.Duration
-	Duration     time.Duration // Zero uses the whole scene duration.
+	Duration     time.Duration // Zero uses the remaining scene duration.
+	Offset       time.Duration // Placement relative to scene start, independent of SourceOffset.
+	FadeIn       time.Duration
+	FadeOut      time.Duration
+	SoundEffect  bool // Sound effects mix into the output but never trigger music ducking.
 }
 
 // TrimPlan describes fractional insets removed from a video's source frame.
@@ -140,7 +177,18 @@ type BoundaryTransition struct {
 
 // MusicPlan describes the looping background-music track.
 type MusicPlan struct {
-	Path    string
-	Volume  float64
-	FadeOut time.Duration
+	Path      string
+	Volume    float64
+	FadeIn    time.Duration
+	FadeOut   time.Duration
+	Normalize bool // Enable loudnorm before applying Volume.
+	Ducking   *DuckingPlan
+}
+
+// DuckingPlan reduces music while foreground audio is present.
+type DuckingPlan struct {
+	Enabled bool
+	Amount  float64 // 0 means no reduction; 1 means maximum compression.
+	Attack  time.Duration
+	Release time.Duration
 }
