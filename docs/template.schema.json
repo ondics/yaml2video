@@ -29,6 +29,58 @@
 		"advanced": { "$ref": "#/$defs/advanced" }
 	},
 	"$defs": {
+		"fit_fraction": {
+			"type": "number",
+			"minimum": 0,
+			"maximum": 1,
+			"description": "Alignment within the fitted image box: 0 at the named edge, 0.5 centered, 1 at the opposite edge. Do not combine left with right or top with bottom. Does not move the box."
+		},
+		"background": {
+			"description": "A solid color or a full-canvas image behind all layout elements.",
+			"oneOf": [
+				{
+					"$ref": "#/$defs/color"
+				},
+				{
+					"type": "object",
+					"additionalProperties": false,
+					"required": [
+						"path"
+					],
+					"properties": {
+						"path": {
+							"type": "string",
+							"minLength": 1,
+							"description": "Image path relative to the video YAML; $(VARIABLE) bindings are allowed."
+						},
+						"fit": {
+							"type": "string",
+							"enum": [
+								"cover",
+								"contain"
+							],
+							"description": "Defaults to defaults.media.default_fit, then cover."
+						},
+						"color": {
+							"$ref": "#/$defs/color",
+							"description": "Underlay for transparency and contain padding; defaults to black."
+						},
+						"left": {
+							"$ref": "#/$defs/fit_fraction"
+						},
+						"right": {
+							"$ref": "#/$defs/fit_fraction"
+						},
+						"top": {
+							"$ref": "#/$defs/fit_fraction"
+						},
+						"bottom": {
+							"$ref": "#/$defs/fit_fraction"
+						}
+					}
+				}
+			]
+		},
 		"advanced": {
 			"description": "Optional advanced mode: element keyframes, reusable keyframe and effect presets, and tracks of timed clips and effect layers. Templates without it render exactly as before.",
 			"type": "object",
@@ -278,7 +330,7 @@
 					"additionalProperties": false,
 					"required": ["elements"],
 					"properties": {
-						"background": { "$ref": "#/$defs/color" },
+						"background": { "$ref": "#/$defs/background" },
 						"elements": { "type": "array", "items": { "$ref": "#/$defs/element" } },
 						"duration": { "$ref": "#/$defs/duration", "description": "Scene length unless the content item sets one." },
 						"transition_out": { "$ref": "#/$defs/transition", "description": "Transition out of scenes using this layout, unless the content item sets one." },
@@ -337,6 +389,10 @@
 				"path": { "type": "string", "minLength": 1, "description": "Image path, relative to the video YAML. $(VARIABLE) bindings are allowed, e.g. $(image) or $(logo)." },
 				"placement": { "$ref": "#/$defs/placement" },
 				"fit": { "type": "string", "enum": ["cover", "contain"] },
+				"left": { "$ref": "#/$defs/fit_fraction" },
+				"right": { "$ref": "#/$defs/fit_fraction" },
+				"top": { "$ref": "#/$defs/fit_fraction" },
+				"bottom": { "$ref": "#/$defs/fit_fraction" },
 				"shape": { "type": "string", "enum": ["rectangle", "rounded-rectangle", "circle"] },
 				"effects": { "$ref": "#/$defs/effects" },
 				"max_width_ratio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
@@ -513,7 +569,7 @@
 			"additionalProperties": false,
 			"required": ["background", "text_color", "accent_color"],
 			"properties": {
-				"background": { "$ref": "#/$defs/color" },
+				"background": { "$ref": "#/$defs/background" },
 				"text_color": { "$ref": "#/$defs/color" },
 				"accent_color": { "$ref": "#/$defs/color" },
 				"muted_color": { "$ref": "#/$defs/color" },
@@ -731,7 +787,7 @@
 			"additionalProperties": false,
 			"required": ["background", "title"],
 			"properties": {
-				"background": { "$ref": "#/$defs/color" },
+				"background": { "$ref": "#/$defs/background" },
 				"logo": { "$ref": "#/$defs/media_element" },
 				"title": { "$ref": "#/$defs/text_element" },
 				"subtitle": { "$ref": "#/$defs/text_element" }
@@ -742,7 +798,7 @@
 			"additionalProperties": false,
 			"required": ["background", "image", "text"],
 			"properties": {
-				"background": { "$ref": "#/$defs/color" },
+				"background": { "$ref": "#/$defs/background" },
 				"logo": { "$ref": "#/$defs/media_element" },
 				"image": { "$ref": "#/$defs/media_element" },
 				"label": { "$ref": "#/$defs/text_element" },
@@ -757,7 +813,7 @@
 			"additionalProperties": false,
 			"required": ["background", "cta"],
 			"properties": {
-				"background": { "$ref": "#/$defs/color" },
+				"background": { "$ref": "#/$defs/background" },
 				"logo": { "$ref": "#/$defs/media_element" },
 				"title": { "$ref": "#/$defs/text_element" },
 				"text": { "$ref": "#/$defs/text_element" },
@@ -784,6 +840,10 @@
 			"properties": {
 				"placement": { "$ref": "#/$defs/placement" },
 				"fit": { "type": "string", "enum": ["cover", "contain"] },
+				"left": { "$ref": "#/$defs/fit_fraction" },
+				"right": { "$ref": "#/$defs/fit_fraction" },
+				"top": { "$ref": "#/$defs/fit_fraction" },
+				"bottom": { "$ref": "#/$defs/fit_fraction" },
 				"shape": { "type": "string", "enum": ["rectangle", "rounded-rectangle", "circle"] },
 				"effects": { "$ref": "#/$defs/effects" },
 				"max_width_ratio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },

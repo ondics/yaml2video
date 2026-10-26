@@ -59,12 +59,42 @@ func isCustomLayout(def any) bool {
 }
 
 // customLayout returns a custom layout's elements and background.
-func customLayout(def any, theme obj) ([]any, string) {
+func customLayout(def any, theme obj) ([]any, any) {
 	if elements, ok := def.([]any); ok {
-		return elements, str(theme["background"])
+		return elements, theme["background"]
 	}
 	l := object(def)
-	return list(l["elements"]), str(choose(l["background"], theme["background"]))
+	return list(l["elements"]), choose(l["background"], theme["background"])
+}
+
+func backgroundColor(background any) string {
+	if color, ok := background.(string); ok {
+		return color
+	}
+	return str(choose(object(background)["color"], "black"))
+}
+
+// Image backgrounds are ordinary full-frame media beneath the layout's layers.
+func composeBackground(scene *ScenePlan, background any, p *Plan, base string, media obj) error {
+	scene.Background = backgroundColor(background)
+	image := object(background)
+	if len(image) == 0 {
+		return nil
+	}
+	value, err := bind(str(image["path"]), scene.bindings)
+	if err != nil {
+		return err
+	}
+	source, err := path(base, value)
+	if err != nil {
+		return err
+	}
+	layer, err := mediaLayer(source, image, media, p.Video)
+	if err != nil {
+		return err
+	}
+	scene.Layers = append(scene.Layers, layer)
+	return nil
 }
 
 func validateLayoutNames(layouts obj) error {
@@ -123,7 +153,9 @@ func composeClassicScene(scene *ScenePlan, l, item obj, p *Plan, base string, de
 		return fmt.Errorf("%s: layout %q needs a cta", name, scene.Layout)
 	}
 	media, typography, theme := object(defaults["media"]), object(defaults["typography"]), object(defaults["theme"])
-	scene.Background = str(l["background"])
+	if err := composeBackground(scene, choose(l["background"], theme["background"]), p, base, media); err != nil {
+		return fmt.Errorf("%s.background: %w", name, err)
+	}
 
 	addMedia := func(key string, asset any) error {
 		if asset == nil {

@@ -58,7 +58,7 @@ stat:
           placement: { anchor: bottom-center, offset_y: -120 }
 ```
 
-Any role can use a custom layout.
+Any role can use a custom layout. Both classic and custom layouts can use an image background, e.g. `background: { path: assets/photo.jpg, fit: cover, left: 0.5, top: 0 }`. This crops the image to the canvas, centered horizontally and aligned at the top; it does not move the background box. See [image backgrounds and fit alignment](reference.md#image-backgrounds-and-fit-alignment).
 
 **Aliases** are a layout name instead of a definition.
 
@@ -114,7 +114,7 @@ Elements render in list order, so later elements stack on top of earlier ones, t
 | Type | Fields |
 | --- | --- |
 | `text` | `text`, `placement`, `style`, `effects`, `max_width_ratio`, `max_lines`, `reveal`, `match`, `replace` |
-| `image` | `path`, `placement`, `max_width_ratio`, `max_height_ratio`, `fit`, `shape`, `effects`, `opacity` |
+| `image` | `path`, `placement`, `max_width_ratio`, `max_height_ratio`, `fit`, `left`/`right`, `top`/`bottom`, `shape`, `effects`, `opacity` |
 | `rect`, `circle` | `width`, `height` (pixels), `color`, `placement`, `corner_radius` (rect), `opacity` |
 | `progress` | `placement`, `width_ratio`, `thickness`, `color`, `background_color` (slides only) |
 | `audio` | `path`, `volume`, `fade_in`, `fade_out`, `ducks` |

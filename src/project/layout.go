@@ -13,7 +13,7 @@ type LayerLayout struct {
 	Height *int `yaml:"height"`
 }
 
-// Trim describes fractional insets removed from a video's source frame.
+// Trim describes fractional insets removed from an image or video's source frame.
 type Trim struct {
 	Top    float64
 	Bottom float64

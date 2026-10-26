@@ -115,11 +115,56 @@ effective duration = sum(scene durations) - sum(overlaps)
 
 ## Layout and visual effects
 
-Every classic layout has a solid `background`. Its required elements are intro `title`, slide `image` and `text`, and outro `cta`; additional elements are defined in the template schema. Custom layouts list their elements freely and stack them in order ([layouts](layouts.md)); the placement, text, media, and effect rules below apply to their elements too.
+Every classic layout has a `background`, either a color or an image object. Its required elements are intro `title`, slide `image` and `text`, and outro `cta`; additional elements are defined in the template schema. Custom layouts list their elements freely and stack them in order ([layouts](layouts.md)); the placement, text, media, and effect rules below apply to their elements too.
 
 Elements require `placement.anchor`, optionally with pixel offsets `offset_x` and `offset_y`. Anchors are `top-left`, `top-center`, `top-right`, `center-left`, `center`, `center-right`, `bottom-left`, `bottom-center`, and `bottom-right`.
 
 Text supports font family, size, weight, color, alignment, maximum width, and maximum line count. Text exceeding `max_lines` is rejected, not truncated. `weight` is a name (`thin`, `extralight`, `light`, `normal`/`regular`, `medium`, `semibold`, `bold`, `extrabold`, `black`: 100–900) or a number from 1 to 1000, as in CSS; a font without that weight uses its nearest one. The schema also permits `line_spacing`, but the current renderer rejects nonzero line spacing. Media supports `cover`/`contain`, maximum width/height ratios, and `rectangle`, `rounded-rectangle`, or `circle` shapes.
+
+### Image backgrounds and fit alignment
+
+`defaults.theme.background` and any classic or custom layout's `background` accept either an existing color string or an image object:
+
+```yaml
+background:
+  path: assets/photo.jpg
+  fit: cover
+  left: 0.5
+  top: 0
+```
+
+The image fills the canvas behind all layout elements. Paths resolve relative to the video YAML and support the same `$(VARIABLE)` bindings as image elements. `fit` defaults to `defaults.media.default_fit`, then `cover`. An optional `color` sets the underlay visible through transparency or `contain` padding (default: black). Custom layouts without a background inherit the theme's background, including images.
+
+Image backgrounds, classic media elements, and custom/track image clips accept `left`, `right`, `top`, and `bottom` next to `fit`. These position the image **inside its fitted box**, without moving or resizing the box:
+
+- Values range from **0 to 1** (0–100%). `left: 0` aligns left, `left: 0.5` centers, and `left: 1` aligns right. `right` measures from the opposite side (`right: 0` aligns right).
+- `top` and `bottom` work the same way vertically: `top: 0` keeps the top edge; `bottom: 0` keeps the bottom edge.
+- With `cover`, the fractions select which part of the scaled image remains after cropping. With `contain`, they distribute the unused space around the image.
+- Specify at most one of `left`/`right` and one of `top`/`bottom`. Omitted axes retain existing behavior: centered cropping for `cover`, placement-anchor alignment for `contain` (centered for backgrounds).
+
+### Trimming image and video layers
+
+In scene-based YAML (`scenes[].layers[]`), both `type: image` and `type: video` accept `trim`. Values are fractions of the original source dimensions removed from each edge, before scaling and fitting:
+
+- `trim: 0.1`: remove 10% from every edge.
+- `trim: [0.1, 0.2]`: remove 10% from the top and bottom, 20% from the left and right.
+- `trim: [0.1, 0.2, 0.05, 0.15]`: remove fractions in **top, bottom, left, right** order.
+
+Values must be nonnegative, and each pair of opposite edges must total less than 1. Omitting `trim` leaves the source unchanged. The remaining region is fitted into the layer's dimensions using `cover` or `contain`.
+
+```yaml
+scenes:
+  - id: cropped-photo
+    duration: 3
+    layers:
+      - type: image
+        path: assets/photo.png
+        trim: [0.1, 0.1, 0.2, 0.05]
+        width: 600
+        height: 400
+        fit: contain
+        transform: center
+```
 
 ### Fonts
 

@@ -142,6 +142,9 @@ type LayerPlan struct {
 	// Anchor aligns contained media within its maximum-width/height box.
 	// Empty retains centered positioning for plans without a placement anchor.
 	Anchor string
+	// FitX/FitY override crop/padding alignment within the box (0=start, 1=end).
+	// Nil preserves the existing centered crop or anchor-aligned padding.
+	FitX, FitY *float64
 
 	X      int
 	Y      int

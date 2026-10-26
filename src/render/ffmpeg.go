@@ -222,34 +222,35 @@ func mediaLayerStream(plan *Plan, scene ScenePlan, layer LayerPlan) *ffmpeg.Stre
 }
 
 func mediaInput(plan *Plan, scene ScenePlan, layer LayerPlan) *ffmpeg.Stream {
+	var input *ffmpeg.Stream
 	if layer.Kind == "image" {
-		return ffmpeg.Input(layer.Path, ffmpeg.KwArgs{
+		input = ffmpeg.Input(layer.Path, ffmpeg.KwArgs{
 			"loop":      1,
 			"framerate": plan.Video.FPS,
 			"t":         ffTime(scene.Duration),
 		})
-	}
+	} else {
+		inputArgs := ffmpeg.KwArgs{}
+		if layer.SourceOffset > 0 {
+			inputArgs["ss"] = ffTime(layer.SourceOffset)
+		}
 
-	inputArgs := ffmpeg.KwArgs{}
-	if layer.SourceOffset > 0 {
-		inputArgs["ss"] = ffTime(layer.SourceOffset)
+		input = ffmpeg.Input(layer.Path, inputArgs).
+			Video().
+			Filter("trim", nil, ffmpeg.KwArgs{
+				"duration": ffTime(mediaDuration(layer.Duration, scene.Duration)),
+			}).
+			Filter("setpts", ffmpeg.Args{"PTS-STARTPTS"})
 	}
-
-	input := ffmpeg.Input(layer.Path, inputArgs).
-		Video().
-		Filter("trim", nil, ffmpeg.KwArgs{
-			"duration": ffTime(mediaDuration(layer.Duration, scene.Duration)),
-		}).
-		Filter("setpts", ffmpeg.Args{"PTS-STARTPTS"})
 
 	if layer.Trim != nil {
-		input = trimVideoFrame(input, *layer.Trim)
+		input = trimMediaFrame(input, *layer.Trim)
 	}
 
 	return input
 }
 
-func trimVideoFrame(input *ffmpeg.Stream, trim TrimPlan) *ffmpeg.Stream {
+func trimMediaFrame(input *ffmpeg.Stream, trim TrimPlan) *ffmpeg.Stream {
 	return input.Filter("crop", ffmpeg.Args{
 		fmt.Sprintf("iw*(1-%g-%g)", trim.Left, trim.Right),
 		fmt.Sprintf("ih*(1-%g-%g)", trim.Top, trim.Bottom),
@@ -263,12 +264,25 @@ func fitLayerStream(input *ffmpeg.Stream, layer LayerPlan) *ffmpeg.Stream {
 	height := strconv.Itoa(layer.Height)
 
 	if layer.Fit == "cover" {
+		x, y := "(iw-ow)/2", "(ih-oh)/2"
+		if layer.FitX != nil {
+			x = fmt.Sprintf("(iw-ow)*%g", *layer.FitX)
+		}
+		if layer.FitY != nil {
+			y = fmt.Sprintf("(ih-oh)*%g", *layer.FitY)
+		}
 		return input.
 			Filter("scale", ffmpeg.Args{width, height, "force_original_aspect_ratio=increase"}).
-			Filter("crop", ffmpeg.Args{width, height})
+			Filter("crop", ffmpeg.Args{width, height, x, y})
 	}
 
 	padX, padY := containPadding(layer.Anchor)
+	if layer.FitX != nil {
+		padX = fmt.Sprintf("(ow-iw)*%g", *layer.FitX)
+	}
+	if layer.FitY != nil {
+		padY = fmt.Sprintf("(oh-ih)*%g", *layer.FitY)
+	}
 	return input.
 		Filter("scale", ffmpeg.Args{width, height, "force_original_aspect_ratio=decrease:force_divisible_by=2"}).
 		Filter("format", ffmpeg.Args{"rgba"}).
