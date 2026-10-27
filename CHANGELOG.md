@@ -2,7 +2,7 @@
 
 All notable changes to the project are documented here.
 
-## Unreleased
+## 2026-10-27 V1.0.0
 
 ### Added
 
@@ -61,7 +61,7 @@ All notable changes to the project are documented here.
 - The `glow` effect blends in RGB; it tinted whole frames purple when screen-blending YUV chroma.
 - Element clips with `set` no longer multiply each other's variants: a variant from an earlier clip is only split again where its window overlaps a later clip's. Eight sequential `set` clips on one element now add eight layers instead of 255.
 
-## v2
+## Prerelease
 
 ### Added
 
