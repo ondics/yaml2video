@@ -20,12 +20,19 @@ func TestParseFontsCommand(t *testing.T) {
 	original := os.Args
 	t.Cleanup(func() { os.Args = original })
 	for _, tc := range []struct {
-		name    string
-		args    []string
-		help    bool
-		invalid bool
+		name        string
+		args        []string
+		help        bool
+		invalid     bool
+		offlineOnly bool
 	}{
 		{name: "fonts", args: []string{"fonts"}},
+		{name: "offline only", args: []string{"fonts", "--offline-only"}, offlineOnly: true},
+		{name: "offline false", args: []string{"fonts", "--offline-only=false"}},
+		{name: "invalid boolean", args: []string{"fonts", "--offline-only=maybe"}, invalid: true},
+		{name: "filter with positional argument", args: []string{"fonts", "--offline-only", "video.yaml"}, invalid: true},
+		{name: "filter on serve", args: []string{"serve", "--offline-only"}, invalid: true},
+		{name: "filter on render", args: []string{"video.yaml", "--offline-only"}, invalid: true},
 		{name: "help", args: []string{"fonts", "--help"}, help: true},
 		{name: "extra argument", args: []string{"fonts", "video.yaml"}, invalid: true},
 		{name: "render flag", args: []string{"fonts", "-n"}, invalid: true},
@@ -43,7 +50,7 @@ func TestParseFontsCommand(t *testing.T) {
 					t.Fatal("expected invalid command arguments")
 				}
 			default:
-				if err != nil || !options.fonts || options.serve || options.videoPath != "" {
+				if err != nil || !options.fonts || options.serve || options.videoPath != "" || options.offlineOnly != tc.offlineOnly {
 					t.Fatalf("unexpected options %#v, error %v", options, err)
 				}
 			}
@@ -101,6 +108,18 @@ func TestCLIFontsUsesSharedCatalogOffline(t *testing.T) {
 	}
 	if string(output) != expected.String() {
 		t.Fatalf("CLI table differs from shared catalogue:\ngot %s\nwant %s", output, &expected)
+	}
+	filtered, err := exec.CommandContext(ctx, binary, "fonts", "--offline-only").Output()
+	if err != nil {
+		t.Fatalf("fonts --offline-only: %v", err)
+	}
+	if strings.Contains(string(filtered), "Metadata Only") || !strings.Contains(string(filtered), "3 font families.") {
+		t.Fatalf("offline filter should exclude metadata-only families and update the count:\n%s", filtered)
+	}
+	for _, family := range []string{"Cached Sans", "Go", "Go Mono"} {
+		if !strings.Contains(string(filtered), family) {
+			t.Errorf("offline table missing %q:\n%s", family, filtered)
+		}
 	}
 	for _, row := range []string{"FONT FAMILY SOURCE CACHED OFFLINE", "Cached Sans google yes yes", "Go bundled no yes", "Go Mono bundled no yes", "Metadata Only google no no"} {
 		found := false

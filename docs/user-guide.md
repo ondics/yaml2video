@@ -311,6 +311,8 @@ Effects are applied in list order. The renderer must reject an effect that is no
 
 List families with `yaml2video fonts`, `make fonts` in Docker, or [`GET /fonts`](server-api.md#get-fonts). Both use the same underlying catalogue: the CLI displays a readable table with font family, source, cached, and offline columns; the HTTP API returns JSON with `family`, `sources`, `cached`, and `available_offline`. Listing can fetch Google Fonts metadata online but never downloads font files. With `YAML2VIDEO_OFFLINE=1`, cached Google Fonts metadata and downloaded instances remain listed. Metadata-only families have `available_offline: false`; a cached family may still need another weight or optical size downloaded for a particular render.
 
+Use `yaml2video fonts --offline-only` or `make fonts ARGS="--offline-only"` to filter the table to offline-available families. The flag only filters results; use `YAML2VIDEO_OFFLINE=1` to prevent metadata network requests too.
+
 The Docker image installs DejaVu Sans, DejaVu Sans Mono, and DejaVu Serif. Go and Go Mono (regular and bold) are bundled in the executable on every platform.
 
 Choose font families in the template with `defaults.typography.font_family` or an element's `style.font_family`. Fonts resolve from project files (`fonts/` next to the video YAML or `defaults.typography.fonts`), installed system fonts, or Google Fonts downloads, which are cached. See the [font reference](reference.md#fonts) for configuration and offline controls.

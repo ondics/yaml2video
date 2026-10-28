@@ -26,8 +26,9 @@ down: ## Take down the yaml2video API server
 cli: ## Run yaml2video with ARGS in the container (ARGS="--help")
 	@$(DC) run --rm -v "$(CURDIR):/data" yaml2video $(ARGS)
 
-fonts: ## List font families in a readable table using the container CLI
-	@$(DC) run --rm -v "$(CURDIR):/data" yaml2video fonts
+fonts: ARGS =
+fonts: ## List font families (ARGS="--offline-only" for offline families)
+	@$(DC) run --rm -v "$(CURDIR):/data" yaml2video fonts $(ARGS)
 
 render: up ## FILE=... DIR=(Default: dir of FILE)
 	@test -n "$(FILE)" || { echo "Error: FILE is required" >&2; exit 1; }

@@ -30,7 +30,17 @@ func main() {
 	}
 
 	if options.fonts {
-		if err := printFontCatalog(os.Stdout, os.Stderr, render.ListFonts()); err != nil {
+		catalog := render.ListFonts()
+		if options.offlineOnly {
+			available := catalog.Fonts[:0]
+			for _, family := range catalog.Fonts {
+				if family.AvailableOffline {
+					available = append(available, family)
+				}
+			}
+			catalog.Fonts = available
+		}
+		if err := printFontCatalog(os.Stdout, os.Stderr, catalog); err != nil {
 			fail(err)
 		}
 		return
@@ -82,7 +92,11 @@ Usage:
   yaml2video [options] video.yaml
   yaml2video video.yaml [options]
   yaml2video serve
-  yaml2video fonts           List font families (including cached Google Fonts)
+  yaml2video fonts [--offline-only]
+                            List font families (including cached Google Fonts)
+
+Font options:
+  --offline-only            Only show bundled, installed, or cached families
 
 Options:
 `)

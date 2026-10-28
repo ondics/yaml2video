@@ -19,6 +19,7 @@ type cliOptions struct {
 	help         bool
 	serve        bool
 	fonts        bool
+	offlineOnly  bool
 }
 
 func newFlagSet(options *cliOptions) *flag.FlagSet {
@@ -41,8 +42,27 @@ func parseArgs() (cliOptions, error) {
 		return options, errors.New("a video YAML file, serve, or fonts command is required")
 	}
 
+	if args[0] == "fonts" {
+		flags := flag.NewFlagSet("fonts", flag.ContinueOnError)
+		flags.SetOutput(io.Discard)
+		flags.BoolVar(&options.help, "h", false, "show help")
+		flags.BoolVar(&options.help, "help", false, "show help")
+		flags.BoolVar(&options.offlineOnly, "offline-only", false, "only list families available offline")
+		if err := flags.Parse(args[1:]); err != nil {
+			return options, err
+		}
+		if options.help {
+			return options, flag.ErrHelp
+		}
+		if flags.NArg() != 0 {
+			return options, errors.New("fonts does not accept positional arguments")
+		}
+		options.fonts = true
+		return options, nil
+	}
+
 	flags := newFlagSet(&options)
-	if args[0] == "serve" || args[0] == "fonts" {
+	if args[0] == "serve" {
 		if err := flags.Parse(args[1:]); err != nil {
 			return options, err
 		}
@@ -53,7 +73,7 @@ func parseArgs() (cliOptions, error) {
 			return options, fmt.Errorf("%s does not accept additional arguments", args[0])
 		}
 		options.serve = args[0] == "serve"
-		options.fonts = args[0] == "fonts"
+
 		return options, nil
 	}
 

@@ -89,6 +89,8 @@ The Docker image installs **DejaVu Sans**, **DejaVu Sans Mono**, and **DejaVu Se
 
 Use `make fonts` (or `yaml2video fonts` outside Docker) to inspect the full catalogue. The HTTP server exposes the same catalogue at [`GET /fonts`](docs/server-api.md#get-fonts). Entries include their sources, whether a Google font file is cached, and whether the family is available offline. Google Fonts metadata may be fetched online, but listing never downloads font files. Offline mode includes cached metadata and downloaded instances; metadata alone does not make a font available offline, and a cached instance does not guarantee every weight or optical size is available.
 
+To show only families available offline, run `make fonts ARGS="--offline-only"` or `yaml2video fonts --offline-only`. This filters the table to bundled, installed, or cached families; it does not disable metadata network requests. Set `YAML2VIDEO_OFFLINE=1` as well when network access must be disabled.
+
 Each command lists the fonts and cache visible to its own process/container. To see a running server's cached downloads, use its `/fonts` endpoint or mount the same cache directory into the CLI container via `YAML2VIDEO_CACHE_DIR`.
 
 ### Server input files
