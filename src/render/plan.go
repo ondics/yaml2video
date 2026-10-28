@@ -308,9 +308,9 @@ type SubtitlePlan struct {
 	// text and draw its regular and bold spans.
 	face, boldFace *fontFace
 	Spans          []TextSpan
-	Font     string
-	FontSize int
-	Color    string
+	Font           string
+	FontSize       int
+	Color          string
 
 	X          int
 	Y          int
