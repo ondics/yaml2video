@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+
 	"errors"
 	"flag"
 	"fmt"
@@ -26,6 +27,13 @@ func main() {
 		printHelp()
 		fmt.Fprintf(os.Stderr, "\n\x1b[31m[Error] %v\x1b[0m", err)
 		os.Exit(2)
+	}
+
+	if options.fonts {
+		if err := printFontCatalog(os.Stdout, os.Stderr, render.ListFonts()); err != nil {
+			fail(err)
+		}
+		return
 	}
 
 	if options.serve {
@@ -74,6 +82,7 @@ Usage:
   yaml2video [options] video.yaml
   yaml2video video.yaml [options]
   yaml2video serve
+  yaml2video fonts           List font families (including cached Google Fonts)
 
 Options:
 `)

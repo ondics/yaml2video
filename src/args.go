@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -17,6 +18,7 @@ type cliOptions struct {
 	dryRun       bool
 	help         bool
 	serve        bool
+	fonts        bool
 }
 
 func newFlagSet(options *cliOptions) *flag.FlagSet {
@@ -36,11 +38,11 @@ func parseArgs() (cliOptions, error) {
 	args := os.Args[1:]
 	var options cliOptions
 	if len(args) == 0 {
-		return options, errors.New("a video YAML file or the serve command is required")
+		return options, errors.New("a video YAML file, serve, or fonts command is required")
 	}
 
 	flags := newFlagSet(&options)
-	if args[0] == "serve" {
+	if args[0] == "serve" || args[0] == "fonts" {
 		if err := flags.Parse(args[1:]); err != nil {
 			return options, err
 		}
@@ -48,9 +50,10 @@ func parseArgs() (cliOptions, error) {
 			return options, flag.ErrHelp
 		}
 		if len(args) != 1 {
-			return options, errors.New("serve does not accept additional arguments")
+			return options, fmt.Errorf("%s does not accept additional arguments", args[0])
 		}
-		options.serve = true
+		options.serve = args[0] == "serve"
+		options.fonts = args[0] == "fonts"
 		return options, nil
 	}
 

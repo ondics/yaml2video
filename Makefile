@@ -8,7 +8,7 @@ MOUNT_DIR ?= .
 
 export DOCKER_IMAGE MOUNT_DIR
 
-.PHONY: help up down down-volumes build bash test
+.PHONY: help up down down-volumes build bash test fonts
 
 .DEFAULT_GOAL := help
 
@@ -25,6 +25,9 @@ down: ## Take down the yaml2video API server
 
 cli: ## Run yaml2video with ARGS in the container (ARGS="--help")
 	@$(DC) run --rm -v "$(CURDIR):/data" yaml2video $(ARGS)
+
+fonts: ## List font families in a readable table using the container CLI
+	@$(DC) run --rm -v "$(CURDIR):/data" yaml2video fonts
 
 render: up ## FILE=... DIR=(Default: dir of FILE)
 	@test -n "$(FILE)" || { echo "Error: FILE is required" >&2; exit 1; }

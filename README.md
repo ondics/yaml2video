@@ -71,6 +71,7 @@ Available Make commands (`make` defaults to `make help`). Container commands use
 | `make help` | Show available Make commands |
 | `make build` | Build or rebuild the image |
 | `make cli ARGS="..."` | Run the CLI with the current folder mounted at `/data` (defaults to `--help`) |
+| `make fonts` | List font families in a readable table via `yaml2video fonts` in the container |
 | `make render FILE=... [DIR=...]` | Start the server, render a mounted video YAML, and print the download URL (or an error) |
 | `make up` | Start the API server at `http://127.0.0.1:8080` |
 | `make down` | Stop and remove the server container (including its stored renders) |
@@ -81,6 +82,14 @@ Available Make commands (`make` defaults to `make help`). Container commands use
 | `make test` | Run Go tests against the current checkout |
 
 Build the image before starting the server. Rendered files are stored inside the server container, not alongside your input files; `make down` removes them.
+
+### Fonts in the image
+
+The Docker image installs **DejaVu Sans**, **DejaVu Sans Mono**, and **DejaVu Serif** through `fonts-dejavu-core`. The executable also bundles **Go** and **Go Mono** in regular and bold. These families require no Google Fonts downloads.
+
+Use `make fonts` (or `yaml2video fonts` outside Docker) to inspect the full catalogue. The HTTP server exposes the same catalogue at [`GET /fonts`](docs/server-api.md#get-fonts). Entries include their sources, whether a Google font file is cached, and whether the family is available offline. Google Fonts metadata may be fetched online, but listing never downloads font files. Offline mode includes cached metadata and downloaded instances; metadata alone does not make a font available offline, and a cached instance does not guarantee every weight or optical size is available.
+
+Each command lists the fonts and cache visible to its own process/container. To see a running server's cached downloads, use its `/fonts` endpoint or mount the same cache directory into the CLI container via `YAML2VIDEO_CACHE_DIR`.
 
 ### Server input files
 
