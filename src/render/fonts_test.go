@@ -1,6 +1,7 @@
 package render
 
 import (
+	"errors"
 	"io"
 	"math"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-text/typesetting/font"
 	ot "github.com/go-text/typesetting/font/opentype"
@@ -200,9 +202,7 @@ func TestEncodeGlyphCubics(t *testing.T) {
 func TestGoogleFontDownload(t *testing.T) {
 	t.Setenv("YAML2VIDEO_OFFLINE", "")
 	t.Setenv("YAML2VIDEO_CACHE_DIR", t.TempDir())
-	googleMu.Lock()
-	googleFamilies, googleListErr = nil, nil
-	googleMu.Unlock()
+	resetGoogleFamilies(t)
 	var queries []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -222,12 +222,7 @@ func TestGoogleFontDownload(t *testing.T) {
 	defer server.Close()
 	oldCSS, oldList := googleCSS, googleList
 	googleCSS, googleList = server.URL+"/css2", server.URL+"/list"
-	defer func() {
-		googleCSS, googleList = oldCSS, oldList
-		googleMu.Lock()
-		googleFamilies, googleListErr = nil, nil
-		googleMu.Unlock()
-	}()
+	defer func() { googleCSS, googleList = oldCSS, oldList }()
 
 	// A variable family: the weight within its range, the optical size of the
 	// text, each instance under a name of its own.
@@ -259,4 +254,32 @@ func TestGoogleFontDownload(t *testing.T) {
 	if f, err := b.fontBook.face("Fake San", 400, 0); err == nil || f != nil || !strings.Contains(err.Error(), `"Fake Sans" (Google Fonts)`) {
 		t.Errorf("expected a Google Fonts suggestion without substitution, got %v, %v", f, err)
 	}
+
+	// Offline, in a new process: cached instances and the cached list, even
+	// a stale one, are used; uncached instances aren't downloaded.
+	t.Setenv("YAML2VIDEO_OFFLINE", "1")
+	resetGoogleFamilies(t)
+	old := time.Now().Add(-2 * googleListTTL)
+	if err := os.Chtimes(filepath.Join(fontCacheDir("google"), "families.json"), old, old); err != nil {
+		t.Fatal(err)
+	}
+	server.Close()
+	if got := newTestFontBook(t, nil).face("Fake Sans", 900, 120).Name; got != "Fake Sans y2v 800 o96" {
+		t.Errorf("offline cached instance %q", got)
+	}
+	if _, err := newFontBook(nil).face("Fake Sans", 300, 120); !errors.Is(err, errOffline) {
+		t.Errorf("offline uncached instance: %v", err)
+	}
+}
+
+// resetGoogleFamilies forgets the in-memory family list, as a new process
+// would, before and after a test.
+func resetGoogleFamilies(t *testing.T) {
+	reset := func() {
+		googleMu.Lock()
+		googleFamilies, googleListErr = nil, nil
+		googleMu.Unlock()
+	}
+	reset()
+	t.Cleanup(reset)
 }

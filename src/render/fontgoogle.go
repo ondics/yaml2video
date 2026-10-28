@@ -105,6 +105,9 @@ func googleFamilyNamed(name string) (googleFamily, error) {
 			return googleFamily{}, googleListErr
 		}
 		list, err := loadGoogleList()
+		if err == errOffline {
+			return googleFamily{}, err
+		}
 		if err != nil {
 			googleListErr, googleListAt = err, time.Now()
 			return googleFamily{}, err
@@ -123,15 +126,19 @@ func googleFamilyNamed(name string) (googleFamily, error) {
 }
 
 // loadGoogleList reads the family list from the cache, fetching it when it is
-// missing or old.
+// missing or old. Offline, a cached list of any age is used.
 func loadGoogleList() ([]googleFamily, error) {
 	path := filepath.Join(fontCacheDir("google"), "families.json")
 	cached, err := os.ReadFile(path)
 	info, statErr := os.Stat(path)
-	if err == nil && statErr == nil && time.Since(info.ModTime()) < googleListTTL {
+	offline := os.Getenv("YAML2VIDEO_OFFLINE") != ""
+	if err == nil && statErr == nil && (offline || time.Since(info.ModTime()) < googleListTTL) {
 		if list, err := parseGoogleList(cached); err == nil {
 			return list, nil
 		}
+	}
+	if offline {
+		return nil, errOffline
 	}
 	data, status, fetchErr := googleGet(googleList)
 	if fetchErr == nil && status != http.StatusOK {
@@ -178,10 +185,8 @@ func googleGet(u string) ([]byte, int, error) {
 
 // googleFont returns a cached or freshly downloaded instance of family for
 // weight and, where the family has optical sizes, for text of size pixels.
+// Offline, only cached instances are returned.
 func googleFont(family string, weight int, size float64) (string, error) {
-	if os.Getenv("YAML2VIDEO_OFFLINE") != "" {
-		return "", errOffline
-	}
 	fam, err := googleFamilyNamed(family)
 	if err != nil {
 		return "", err
@@ -200,6 +205,9 @@ func googleFont(family string, weight int, size float64) (string, error) {
 	path := filepath.Join(fontCacheDir("google"), file+".ttf")
 	if _, err := os.Stat(path); err == nil {
 		return path, nil
+	}
+	if os.Getenv("YAML2VIDEO_OFFLINE") != "" {
+		return "", errOffline
 	}
 	query := fam.Family + ":" + strings.Join(tags, ",") + "@" + strings.Join(values, ",")
 	data, err := fetchGoogleFont(query)

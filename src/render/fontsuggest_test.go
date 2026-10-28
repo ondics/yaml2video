@@ -15,6 +15,7 @@ func TestMissingFontSuggestions(t *testing.T) {
 	t.Setenv("YAML2VIDEO_CACHE_DIR", t.TempDir())
 	t.Setenv("YAML2VIDEO_SYSTEM_FONTS", "on")
 	t.Setenv("YAML2VIDEO_OFFLINE", "1")
+	resetGoogleFamilies(t)
 	// Inject an index so this test doesn't depend on installed fonts.
 	b := newFontBook(nil)
 	b.sysOnce.Do(func() {
@@ -29,7 +30,7 @@ func TestMissingFontSuggestions(t *testing.T) {
 		t.Fatalf("missing family must fail, got face %v, error %v", f, err)
 	}
 	message := err.Error()
-	for _, want := range []string{`font "Robotto"`, `"roboto" (system)`, `"Roboto Slab" (Google Fonts; cached catalog)`, `"Go" (bundled)`, "downloads are off"} {
+	for _, want := range []string{`font "Robotto"`, `"roboto" (system)`, `"Roboto Slab" (Google Fonts)`, `"Go" (bundled)`, "not on Google Fonts"} {
 		if !strings.Contains(message, want) {
 			t.Errorf("error missing %q: %s", want, message)
 		}

@@ -192,7 +192,7 @@ Fonts that aren't installed, and all instances, reach FFmpeg through the render'
 
 | Environment variable | Effect |
 | --- | --- |
-| `YAML2VIDEO_OFFLINE=1` | Never download fonts. |
+| `YAML2VIDEO_OFFLINE=1` | Never download fonts; Google Fonts already in the cache are still used. |
 | `YAML2VIDEO_SYSTEM_FONTS=off` | Ignore installed fonts: only project, downloaded, and bundled fonts. |
 | `YAML2VIDEO_CACHE_DIR` | Where downloaded fonts, font instances, Google's family list, and the installed-font index are kept (default: the user cache directory). |
 

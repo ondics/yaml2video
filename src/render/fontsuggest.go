@@ -2,8 +2,6 @@ package render
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -28,23 +26,13 @@ func (b *fontBook) missingFontError(family string, cause error) error {
 	}
 	add("Go", "bundled")
 	add("Go Mono", "bundled")
-	// googleFont has already attempted to load the catalog online. Reuse it
-	// without retrying a failed network request. Offline, a cached catalog is OK.
+	// googleFont has already loaded the catalog, from the cache when offline;
+	// reuse it without retrying a failed request.
 	googleMu.Lock()
 	for _, f := range googleFamilies {
 		add(f.Family, "Google Fonts")
 	}
-	haveCatalog := googleFamilies != nil
 	googleMu.Unlock()
-	if !haveCatalog {
-		if data, err := os.ReadFile(filepath.Join(fontCacheDir("google"), "families.json")); err == nil {
-			if families, err := parseGoogleList(data); err == nil {
-				for _, f := range families {
-					add(f.Family, "Google Fonts; cached catalog")
-				}
-			}
-		}
-	}
 
 	type match struct {
 		name     string
