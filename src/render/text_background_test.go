@@ -16,7 +16,7 @@ video:
   background: black
 defaults:
   text:
-    font: Arial
+    font: Go
     size: 24
     color: white
     background:
@@ -24,7 +24,7 @@ defaults:
       opacity: 0.5
       padding: [8, 4]
   subtitle:
-    font: Arial
+    font: Go
     size: 20
     color: white
     background:

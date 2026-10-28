@@ -3,6 +3,7 @@ package render
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -29,12 +30,13 @@ import (
 
 // Google Fonts downloads can be turned off with YAML2VIDEO_OFFLINE=1.
 var (
-	errOffline     = fmt.Errorf("downloads are off")
-	errNotOnGoogle = fmt.Errorf("not on Google Fonts")
-	googleCSS      = "https://fonts.googleapis.com/css2"
-	googleList     = "https://fonts.google.com/metadata/fonts"
-	googleClient   = &http.Client{Timeout: 30 * time.Second}
-	cssFontURL     = regexp.MustCompile(`url\((https?://[^)]+)\)`)
+	errOffline          = fmt.Errorf("downloads are off")
+	errNotOnGoogle      = fmt.Errorf("not on Google Fonts")
+	errGoogleNoFontFile = errors.New("Google Fonts returned no font file")
+	googleCSS           = "https://fonts.googleapis.com/css2"
+	googleList          = "https://fonts.google.com/metadata/fonts"
+	googleClient        = &http.Client{Timeout: 30 * time.Second}
+	cssFontURL          = regexp.MustCompile(`url\((https?://[^)]+)\)`)
 )
 
 // googleListTTL is how long the cached family list is used before it is
@@ -84,9 +86,16 @@ func (f googleFamily) weight(want int) int {
 
 func abs(n int) int { return max(n, -n) }
 
+// googleListRetry is how long a failure to get the family list is reused
+// before fetching again, so a missing font doesn't wait on the network for
+// every lookup.
+const googleListRetry = time.Minute
+
 var (
 	googleMu       sync.Mutex
 	googleFamilies map[string]googleFamily // by normalized name
+	googleListErr  error
+	googleListAt   time.Time // when googleListErr happened
 )
 
 // googleFamilyNamed looks a family up in Google's font list.
@@ -94,10 +103,18 @@ func googleFamilyNamed(name string) (googleFamily, error) {
 	googleMu.Lock()
 	defer googleMu.Unlock()
 	if googleFamilies == nil {
+		if googleListErr != nil && time.Since(googleListAt) < googleListRetry {
+			return googleFamily{}, googleListErr
+		}
 		list, err := loadGoogleList()
-		if err != nil {
+		if err == errOffline {
 			return googleFamily{}, err
 		}
+		if err != nil {
+			googleListErr, googleListAt = err, time.Now()
+			return googleFamily{}, err
+		}
+		googleListErr = nil
 		googleFamilies = map[string]googleFamily{}
 		for _, f := range list {
 			googleFamilies[font.NormalizeFamily(f.Family)] = f
@@ -111,15 +128,19 @@ func googleFamilyNamed(name string) (googleFamily, error) {
 }
 
 // loadGoogleList reads the family list from the cache, fetching it when it is
-// missing or old.
+// missing or old. Offline, a cached list of any age is used.
 func loadGoogleList() ([]googleFamily, error) {
 	path := filepath.Join(fontCacheDir("google"), "families.json")
 	cached, err := os.ReadFile(path)
 	info, statErr := os.Stat(path)
-	if err == nil && statErr == nil && time.Since(info.ModTime()) < googleListTTL {
+	offline := os.Getenv("YAML2VIDEO_OFFLINE") != ""
+	if err == nil && statErr == nil && (offline || time.Since(info.ModTime()) < googleListTTL) {
 		if list, err := parseGoogleList(cached); err == nil {
 			return list, nil
 		}
+	}
+	if offline {
+		return nil, errOffline
 	}
 	data, status, fetchErr := googleGet(googleList)
 	if fetchErr == nil && status != http.StatusOK {
@@ -166,10 +187,10 @@ func googleGet(u string) ([]byte, int, error) {
 
 // googleFont returns a cached or freshly downloaded instance of family for
 // weight and, where the family has optical sizes, for text of size pixels.
+// If Google cannot serve an optical-size instance, the same family and weight
+// at its default optical size is used, with a warning. Offline, only cached
+// instances are returned.
 func googleFont(family string, weight int, size float64) (string, error) {
-	if os.Getenv("YAML2VIDEO_OFFLINE") != "" {
-		return "", errOffline
-	}
 	fam, err := googleFamilyNamed(family)
 	if err != nil {
 		return "", err
@@ -189,9 +210,26 @@ func googleFont(family string, weight int, size float64) (string, error) {
 	if _, err := os.Stat(path); err == nil {
 		return path, nil
 	}
+	defaultOpticalSize := func(reason error) (string, error) {
+		fallback, err := googleFont(family, weight, 0)
+		if err != nil {
+			return "", fmt.Errorf("%w; default optical size also unavailable: %w", reason, err)
+		}
+		warnf("Google Fonts %q at weight %d: requested optical size unavailable; using the same family's default optical size", fam.Family, w)
+		return fallback, nil
+	}
+	if os.Getenv("YAML2VIDEO_OFFLINE") != "" {
+		if len(tags) > 1 {
+			return defaultOpticalSize(errOffline)
+		}
+		return "", errOffline
+	}
 	query := fam.Family + ":" + strings.Join(tags, ",") + "@" + strings.Join(values, ",")
 	data, err := fetchGoogleFont(query)
 	if err != nil {
+		if len(tags) > 1 && errors.Is(err, errGoogleNoFontFile) {
+			return defaultOpticalSize(err)
+		}
 		return "", err
 	}
 	if data, err = renameFont(data, name); err != nil {
@@ -214,7 +252,7 @@ func fetchGoogleFont(query string) ([]byte, error) {
 	}
 	m := cssFontURL.FindSubmatch(css)
 	if m == nil {
-		return nil, fmt.Errorf("Google Fonts: no font file for %s", query)
+		return nil, fmt.Errorf("%w for %s", errGoogleNoFontFile, query)
 	}
 	data, status, err := googleGet(string(m[1]))
 	if err != nil {

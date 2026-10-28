@@ -157,8 +157,9 @@ type LayerPlan struct {
 	FontSize int
 	// Weight (100–900) picks the face of Font; zero uses the spans' bold.
 	Weight int
-	// face is the font Font resolved to, which measures the text.
-	face *fontFace
+	// face is the font Font resolved to, which measures the text. boldFace
+	// draws bold spans of text without a Weight.
+	face, boldFace *fontFace
 
 	SourceOffset    time.Duration
 	Duration        time.Duration // Zero uses the whole scene duration.
@@ -303,10 +304,13 @@ type TextBackgroundBox struct {
 
 // SubtitlePlan describes a timed subtitle.
 type SubtitlePlan struct {
-	Spans    []TextSpan
-	Font     string
-	FontSize int
-	Color    string
+	// face and boldFace are the fonts Font resolved to, which measure the
+	// text and draw its regular and bold spans.
+	face, boldFace *fontFace
+	Spans          []TextSpan
+	Font           string
+	FontSize       int
+	Color          string
 
 	X          int
 	Y          int

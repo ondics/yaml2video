@@ -10,6 +10,36 @@ To mount another folder, start the server with `make up MOUNT_DIR=/absolute/path
 
 This input mount is separate from the server's named data volume at `/var/lib/yaml2video`. `POST /render` continues to resolve relative media paths under `/var/lib/yaml2video/media`, not `/data`.
 
+## GET /fonts
+
+List font families using the shared `render.ListFonts()` catalog. No query parameters are supported initially.
+
+```sh
+curl --fail http://localhost:8080/fonts
+```
+
+Returns `200 OK` with `Content-Type: application/json` and `Cache-Control: no-store`:
+
+```json
+{
+  "fonts": [
+    {"family": "Go", "sources": ["bundled"], "cached": false, "available_offline": true},
+    {"family": "Go Mono", "sources": ["bundled"], "cached": false, "available_offline": true}
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `fonts` | Array of deduplicated families, sorted by family name (case-insensitive). Entries describe families, not individual font files; there are no file-path fields. |
+| `fonts[].family` | Display name to use as a font family. |
+| `fonts[].sources` | One or more of `bundled`, `system`, and `google`, in that order. A family can come from multiple sources. |
+| `fonts[].cached` | At least one actual Google font instance is cached. Cached family metadata alone does not count. Bundled or system fonts alone do not set this flag. |
+| `fonts[].available_offline` | The family is bundled, installed on the server, or has at least one cached Google instance. This does **not** guarantee that all sizes, optical sizes, styles, or weights are available offline. |
+| `warnings` | Optional array of discovery warnings, omitted when empty. If metadata or another source is unavailable, the response remains `200 OK` with partial results and any warnings reported by the shared catalog. |
+
+Discovery honors the server's `YAML2VIDEO_SYSTEM_FONTS=off` and `YAML2VIDEO_OFFLINE` settings. With offline mode enabled, it lists cached metadata (even if stale) and cached instances without downloads; metadata-only Google families have `cached: false` and `available_offline: false` unless another source makes them available. Missing offline metadata is normal and does not itself produce a warning. Online discovery may fetch Google family metadata, but this endpoint never downloads font files.
+
 ## GET /render/local
 
 Render YAML files already present on the server (not uploaded by the request):

@@ -44,7 +44,7 @@ video:
   background: black
 defaults:
   text:
-    font: Arial
+    font: Go
     size: 20
     color: white
 scenes:

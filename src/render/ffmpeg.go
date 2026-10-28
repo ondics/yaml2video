@@ -712,20 +712,25 @@ func (p *Plan) writeASS() error {
 func (p *Plan) bundledFonts() []string {
 	seen := map[string]bool{}
 	var files []string
-	add := func(l LayerPlan) {
-		if l.face != nil && l.face.Bundled && !seen[l.face.Path] {
-			seen[l.face.Path] = true
-			files = append(files, l.face.Path)
+	add := func(face *fontFace) {
+		if face != nil && face.Bundled && !seen[face.Path] {
+			seen[face.Path] = true
+			files = append(files, face.Path)
 		}
 	}
 	for _, scene := range p.Scenes {
 		for _, l := range scene.Layers {
-			add(l)
+			add(l.face)
+			add(l.boldFace)
+		}
+		for _, subtitle := range scene.Subtitles {
+			add(subtitle.face)
+			add(subtitle.boldFace)
 		}
 	}
 	for _, track := range p.allTracks() {
 		for _, clip := range track.Clips {
-			add(clip.Layer)
+			add(clip.Layer.face)
 		}
 	}
 	return files

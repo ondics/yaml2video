@@ -20,7 +20,7 @@ video:
   background: "#101010"
 defaults:
   text:
-    font: Arial
+    font: Go
     size: 48
     color: white
 music:

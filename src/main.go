@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+
 	"errors"
 	"flag"
 	"fmt"
@@ -26,6 +27,23 @@ func main() {
 		printHelp()
 		fmt.Fprintf(os.Stderr, "\n\x1b[31m[Error] %v\x1b[0m", err)
 		os.Exit(2)
+	}
+
+	if options.fonts {
+		catalog := render.ListFonts()
+		if options.offlineOnly {
+			available := catalog.Fonts[:0]
+			for _, family := range catalog.Fonts {
+				if family.AvailableOffline {
+					available = append(available, family)
+				}
+			}
+			catalog.Fonts = available
+		}
+		if err := printFontCatalog(os.Stdout, os.Stderr, catalog); err != nil {
+			fail(err)
+		}
+		return
 	}
 
 	if options.serve {
@@ -74,6 +92,11 @@ Usage:
   yaml2video [options] video.yaml
   yaml2video video.yaml [options]
   yaml2video serve
+  yaml2video fonts [--offline-only]
+                            List font families (including cached Google Fonts)
+
+Font options:
+  --offline-only            Only show bundled, installed, or cached families
 
 Options:
 `)
