@@ -211,6 +211,12 @@ func (b *fontBook) resolve(family string, weight int, size float64) (*fontFace, 
 			return f, nil
 		}
 	}
+	googleMu.Lock()
+	_, listed := googleFamilies[font.NormalizeFamily(family)]
+	googleMu.Unlock()
+	if listed {
+		return nil, fmt.Errorf("font %q is listed on Google Fonts but could not be loaded: %w", family, err)
+	}
 	return nil, b.missingFontError(family, err)
 }
 
