@@ -17,6 +17,8 @@ func example(t *testing.T, kind string) (string, string) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// These tests exercise composition without downloading example fonts.
+		raw = bundledExampleFonts(raw)
 		if err = os.WriteFile(filepath.Join(dir, file), raw, 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -36,6 +38,14 @@ func example(t *testing.T, kind string) (string, string) {
 	}
 
 	return filepath.Join(dir, "video.yaml"), filepath.Join(dir, "template.yaml")
+}
+
+func bundledExampleFonts(raw []byte) []byte {
+	return []byte(strings.NewReplacer(
+		"\"Inter\"", "\"Go\"",
+		"\"Clash Display Variable\"", "\"Go\"",
+		"\"Fira Code\"", "\"Go Mono\"",
+	).Replace(string(raw)))
 }
 
 func TestSimpleExample(t *testing.T) {

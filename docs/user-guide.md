@@ -307,6 +307,12 @@ Supported image effects are `pan_zoom`, `color_filter`, `vignette`, `blur`, and 
 
 Effects are applied in list order. The renderer must reject an effect that is not suitable for the selected element type.
 
+## Fonts
+
+Choose font families in the template with `defaults.typography.font_family` or an element's `style.font_family`. Fonts resolve from project files (`fonts/` next to the video YAML or `defaults.typography.fonts`), installed system fonts, or Google Fonts downloads, which are cached. See the [font reference](reference.md#fonts) for configuration and offline controls.
+
+A missing font is a hard compilation error, even for a dry run. The error names the requested family and suggests available project, system, or Google Fonts families and the bundled `Go` and `Go Mono` families. Supply or install the intended font, allow its Google Fonts download, or explicitly select an available family. Only the names `Go` and `Go Mono` select the bundled fonts; the renderer never automatically substitutes them for another family.
+
 ## Layout bindings
 
 Layout element names bind to content fields with the same name:

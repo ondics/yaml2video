@@ -182,8 +182,9 @@ Text is measured with the font file that draws it, shaped (kerning and ligatures
 
 1. a font file in `fonts/` next to the video YAML, or in the files and directories listed in `defaults.typography.fonts` (relative to the video YAML);
 2. an installed font;
-3. a [Google Fonts](https://fonts.google.com) family, downloaded on first use and cached;
-4. a bundled Go font (Go Mono for families whose names look monospaced, Go otherwise), with a warning.
+3. a [Google Fonts](https://fonts.google.com) family, downloaded on first use and cached.
+
+The bundled families `Go` and `Go Mono` are available when explicitly requested by name, and text without a font family uses `Go`. They are not automatic substitutes for other families. An unavailable font is a hard compilation error, including during dry runs, rather than a warning or silent substitution. The error identifies the requested family and suggests available project, system, or Google Fonts families, as well as the bundled Go families. Supply the intended font in the project, install it, allow its Google Fonts download, or explicitly choose an available family.
 
 Variable fonts get exactly the weight a text asks for and, when they have an optical size axis, the optical size of the text's font size, as browsers choose it: a 120 px headline in Bricolage Grotesque gets its display cut, a 28 px caption its text cut. libass can't set a font's axes, so each weight and size becomes a static instance: downloaded as one from Google Fonts, or made from the variable font file for project and installed fonts (cached in the cache directory).
 

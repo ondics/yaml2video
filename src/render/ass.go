@@ -39,6 +39,7 @@ func assDocument(width, height int, scene ScenePlan) string {
 		text := assSpans(
 			layer.Spans,
 			layer.Font,
+			boldFont(layer.Font, layer.boldFace),
 			layer.FontSize,
 			layer.Color,
 			layer.Opacity,
@@ -61,6 +62,7 @@ func assDocument(width, height int, scene ScenePlan) string {
 		text := assSpans(
 			subtitle.Spans,
 			subtitle.Font,
+			boldFont(subtitle.Font, subtitle.boldFace),
 			subtitle.FontSize,
 			subtitle.Color,
 			1,
@@ -126,9 +128,19 @@ func subtitleFadeDurations(subtitle SubtitlePlan) (fadeIn, fadeOut int) {
 	return fadeIn, fadeOut
 }
 
+// boldFont is the family libass draws bold spans with: the resolved bold face,
+// which can be an instance named apart from the regular one, or font for
+// plans built without one.
+func boldFont(font string, bold *fontFace) string {
+	if bold == nil {
+		return font
+	}
+	return bold.Name
+}
+
 func assSpans(
 	spans []TextSpan,
-	font string,
+	font, boldFont string,
 	size int,
 	defaultColor string,
 	opacity float64,
@@ -158,10 +170,14 @@ func assSpans(
 			activeBackground = spanBackground
 		}
 
+		spanFont := font
+		if span.Bold {
+			spanFont = boldFont
+		}
 		fmt.Fprintf(
 			&value,
 			"{\\fn%s\\fs%d\\c%s\\1a%s\\b%d\\i%d\\u%d%s}%s",
-			assEscape(font),
+			assEscape(spanFont),
 			size,
 			assColor(color),
 			assAlpha(color, opacity),

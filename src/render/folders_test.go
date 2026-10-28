@@ -47,7 +47,7 @@ layout:
                 id: code-text
                 text: "a: 1\n  b: 2"
                 placement: { anchor: center }
-                style: { font_family: "Fira Code", font_size: 40, align: left }
+                style: { font_family: "Go Mono", font_size: 40, align: left }
                 reveal: { chars_end: "50%" }
               - { type: rect, id: cursor, width: 10, height: 40, color: "#D7FF3E", placement: { anchor: center, offset_x: 100 } }
               - { type: audio, path: $(SOUND), start: 0.25s, duration: 0.5s, optional: true }
@@ -444,7 +444,7 @@ layout:
             id: code
             text: "key: \"value\"\nnext: 2"
             placement: { anchor: center-left, offset_x: 100 }
-            style: { font_family: "Fira Code", font_size: 50, align: left }
+            style: { font_family: "Go Mono", font_size: 50, align: left }
             keyframes: [{ at: 0s, chars_end: 0 }, { at: 1.2s, chars_end: 12 }, { at: 1.3s, chars_end: 13 }]
           - { type: rect, id: cursor, color: "#FF0000", start: 0.5s, caret: { text: code } }
 `
@@ -453,7 +453,11 @@ func TestCoverAndCaret(t *testing.T) {
 	p := loadFolders(t, folderVideo, attachTemplate)
 	clips := layoutTrack(p.Scenes[0]).Clips
 	code := findClip(clips, "code").Layer
-	cell := fontsOf(p.Video).face("Fira Code", 400, 50).offsets([]rune("0"), 50, 0, 0)[1]
+	face, err := fontsOf(p.Video).face("Go Mono", 400, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cell := face.offsets([]rune("0"), 50, 0, 0)[1]
 	top := float64(code.Y+code.Height/2) - 50 // two lines of 50 px around the middle
 
 	// The highlight covers `"value"` (characters 5–11) plus padding.

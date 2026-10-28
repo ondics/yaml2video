@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,7 +12,16 @@ import (
 // The showcase's scene templates set every scene's length and transition, so
 // its scenes start on a 120 BPM beat grid.
 func TestShowcaseExample(t *testing.T) {
-	p, err := Load(filepath.Join("..", "..", "examples", "showcase", "video.yaml"), "")
+	base := filepath.Join("..", "..", "examples", "showcase")
+	video, err := os.ReadFile(filepath.Join(base, "video.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl, err := os.ReadFile(filepath.Join(base, "template.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := FromBytes(video, bundledExampleFonts(tmpl), base)
 	if err != nil {
 		t.Fatal(err)
 	}

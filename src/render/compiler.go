@@ -184,10 +184,17 @@ func compileSubtitles(p *project.Project, subtitles []project.Subtitle) ([]Subti
 			return nil, err
 		}
 
+		faces, err := resolveTextFaces(p.Defaults.Subtitle.Font, float64(p.Defaults.Subtitle.Size), spans)
+		if err != nil {
+			return nil, fmt.Errorf("subtitles: %w", err)
+		}
+
 		end := offset + seconds(subtitle.Duration)
 		plans = append(plans, SubtitlePlan{
+			face:       faces.regular,
+			boldFace:   faces.bold,
 			Spans:      spans,
-			Font:       p.Defaults.Subtitle.Font,
+			Font:       faces.regular.Name,
 			FontSize:   p.Defaults.Subtitle.Size,
 			Color:      colorString(p.Defaults.Subtitle.Color),
 			X:          p.Video.Width / 2,
@@ -456,8 +463,6 @@ func compileAudioSource(layer project.Layer, plan LayerPlan) (LayerPlan, error) 
 }
 
 func compileTextLayer(p *project.Project, layer project.Layer, plan LayerPlan) (LayerPlan, error) {
-	plan.face = defaultFonts.face(p.Defaults.Text.Font, 400, 0)
-	plan.Font = plan.face.Name
 	plan.FontSize = p.Defaults.Text.Size
 	if layer.Size > 0 {
 		plan.FontSize = layer.Size
@@ -483,7 +488,14 @@ func compileTextLayer(p *project.Project, layer project.Layer, plan LayerPlan) (
 		return plan, fmt.Errorf("text content is required")
 	}
 
-	metrics := measureText(spans, plan.Font, plan.FontSize)
+	faces, err := resolveTextFaces(p.Defaults.Text.Font, 0, spans)
+	if err != nil {
+		return plan, err
+	}
+	plan.face, plan.boldFace = faces.regular, faces.bold
+	plan.Font = faces.regular.Name
+
+	metrics := measureText(spans, faces, plan.FontSize)
 	layout := textLayout(layer.LayerLayout, metrics)
 	bounds, err := resolveTransform(p.Video.Width, p.Video.Height, layout, layer.Transform)
 	if err != nil {
@@ -497,8 +509,8 @@ func compileTextLayer(p *project.Project, layer project.Layer, plan LayerPlan) (
 
 	if layer.Width != nil {
 		plan.WrapWidth = plan.Width
-		spans = wrapTextSpans(spans, plan.WrapWidth, plan.Font, plan.FontSize)
-		metrics = measureText(spans, plan.Font, plan.FontSize)
+		spans = wrapTextSpans(spans, plan.WrapWidth, faces, plan.FontSize)
+		metrics = measureText(spans, faces, plan.FontSize)
 
 		if layer.Height == nil {
 			layout = textLayout(layer.LayerLayout, metrics)
@@ -514,7 +526,7 @@ func compileTextLayer(p *project.Project, layer project.Layer, plan LayerPlan) (
 	}
 
 	plan.Spans = spans
-	plan.ItemBackgrounds = textItemBackgrounds(spans, metrics, plan)
+	plan.ItemBackgrounds = textItemBackgrounds(spans, metrics, plan, faces)
 	return plan, nil
 }
 
@@ -1283,12 +1295,15 @@ func textLayer(value, key string, el, typography, theme obj, video VideoSpec) (L
 		return LayerPlan{}, fmt.Errorf("text width empty")
 	}
 
-	font := str(choose(style["font_family"], typography["font_family"], "Arial"))
+	font := str(choose(style["font_family"], typography["font_family"], "Go"))
 	weight, err := parseWeight(style["weight"])
 	if err != nil {
 		return LayerPlan{}, err
 	}
-	face := fontsOf(video).face(font, weight, float64(size))
+	face, err := fontsOf(video).face(font, weight, float64(size))
+	if err != nil {
+		return LayerPlan{}, err
+	}
 	letter, word := num(style["letter_spacing"]), num(style["word_spacing"])
 	fits := func(line string) bool {
 		return face.lineWidth([]rune(line), float64(size), letter, word) <= float64(width)

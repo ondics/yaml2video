@@ -32,9 +32,27 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestFontFallbackAndProjectFonts(t *testing.T) {
-	b := newFontBook(nil)
-	mono := b.face("Some Code Font", 400, 0)
+type testFontBook struct {
+	*fontBook
+	t *testing.T
+}
+
+func newTestFontBook(t *testing.T, dirs []string) testFontBook {
+	return testFontBook{newFontBook(dirs), t}
+}
+
+func (b testFontBook) face(family string, weight int, size float64) *fontFace {
+	b.t.Helper()
+	f, err := b.fontBook.face(family, weight, size)
+	if err != nil {
+		b.t.Fatal(err)
+	}
+	return f
+}
+
+func TestBundledAndProjectFonts(t *testing.T) {
+	b := newTestFontBook(t, nil)
+	mono := b.face("Go Mono", 400, 0)
 	if mono.Name != "Go Mono" || !mono.Bundled {
 		t.Fatalf("fallback %q bundled=%v", mono.Name, mono.Bundled)
 	}
@@ -45,8 +63,8 @@ func TestFontFallbackAndProjectFonts(t *testing.T) {
 			t.Fatalf("uneven advances %v", x)
 		}
 	}
-	if f := b.face("Some Display", 700, 0); f.Name != "Go" || f.Weight != 600 { // Go Bold's weight class
-		t.Error("a proportional family should fall back to Go")
+	if f := b.face("Go", 700, 0); f.Name != "Go" || f.Weight != 600 { // Go Bold's weight class
+		t.Error("Go should resolve to its bundled bold face")
 	}
 
 	// Font files in a project directory come first, named as libass sees them.
@@ -54,14 +72,14 @@ func TestFontFallbackAndProjectFonts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "mine.ttf"), gomono.TTF, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f := newFontBook([]string{dir}).face("go mono", 400, 0)
+	f := newTestFontBook(t, []string{dir}).face("go mono", 400, 0)
 	if f.Path != filepath.Join(dir, "mine.ttf") || f.Name != "Go Mono" || !f.Bundled {
 		t.Errorf("project font %+v", f)
 	}
 }
 
 func TestFontMeasurement(t *testing.T) {
-	f := newFontBook(nil).face("Go", 400, 0)
+	f := newTestFontBook(t, nil).face("Go", 400, 0)
 	// Letter spacing follows every character, word spacing every plain space:
 	// here the ones after a and b, not the leading or the repeated one (hard
 	// spaces in ASS).
@@ -110,7 +128,7 @@ func TestRenameFont(t *testing.T) {
 		t.Errorf("name %q", f.Name)
 	}
 	// Only the name changed: it measures like the original.
-	orig := newFontBook(nil).face("Go", 400, 0)
+	orig := newTestFontBook(t, nil).face("Go", 400, 0)
 	if a, b := f.offsets([]rune("Rename"), 50, 0, 0), orig.offsets([]rune("Rename"), 50, 0, 0); a[6] != b[6] {
 		t.Errorf("widths %g vs %g", a[6], b[6])
 	}
@@ -135,7 +153,7 @@ func TestInstanceFont(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	orig := newFontBook(nil).face("Go", 400, 0)
+	orig := newTestFontBook(t, nil).face("Go", 400, 0)
 	text := []rune("Instanced, quickly: 1234")
 	if a, b := f.offsets(text, 50, 0, 0), orig.offsets(text, 50, 0, 0); math.Abs(a[len(text)]-b[len(text)]) > 1e-6 {
 		t.Errorf("width %g, original %g", a[len(text)], b[len(text)])
@@ -183,7 +201,7 @@ func TestGoogleFontDownload(t *testing.T) {
 	t.Setenv("YAML2VIDEO_OFFLINE", "")
 	t.Setenv("YAML2VIDEO_CACHE_DIR", t.TempDir())
 	googleMu.Lock()
-	googleFamilies = nil
+	googleFamilies, googleListErr = nil, nil
 	googleMu.Unlock()
 	var queries []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -207,13 +225,13 @@ func TestGoogleFontDownload(t *testing.T) {
 	defer func() {
 		googleCSS, googleList = oldCSS, oldList
 		googleMu.Lock()
-		googleFamilies = nil
+		googleFamilies, googleListErr = nil, nil
 		googleMu.Unlock()
 	}()
 
 	// A variable family: the weight within its range, the optical size of the
 	// text, each instance under a name of its own.
-	b := newFontBook(nil)
+	b := newTestFontBook(t, nil)
 	f := b.face("fake sans", 900, 120)
 	if f.Name != "Fake Sans y2v 800 o96" || !f.Bundled || f.Weight != 400 {
 		t.Errorf("instance %q weight %d bundled %v", f.Name, f.Weight, f.Bundled)
@@ -231,11 +249,14 @@ func TestGoogleFontDownload(t *testing.T) {
 	}
 	// Cached: a new book downloads nothing.
 	queries = nil
-	newFontBook(nil).face("Fake Sans", 900, 120)
+	newTestFontBook(t, nil).face("Fake Sans", 900, 120)
 	if len(queries) != 0 {
 		t.Errorf("cached instance fetched again: %q", queries)
 	}
 	if _, err := googleFont("Nope", 400, 0); err != errNotOnGoogle {
 		t.Errorf("got %v", err)
+	}
+	if f, err := b.fontBook.face("Fake San", 400, 0); err == nil || f != nil || !strings.Contains(err.Error(), `"Fake Sans" (Google Fonts)`) {
+		t.Errorf("expected a Google Fonts suggestion without substitution, got %v, %v", f, err)
 	}
 }

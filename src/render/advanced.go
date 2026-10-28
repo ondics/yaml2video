@@ -633,7 +633,10 @@ func (c *advancedContext) buildFolder(clip obj, o owner, start, length time.Dura
 	} else if box, ok := clipsBounds(children.Clips); ok {
 		pivot = [2]float64{float64(box[0]+box[2]) / 2, float64(box[1]+box[3]) / 2}
 	}
-	canvas := folderCanvas(children.Clips, video)
+	canvas, err := folderCanvas(children.Clips, video)
+	if err != nil {
+		return ClipPlan{}, err
+	}
 	children.Canvas = &canvas
 	layer := LayerPlan{Kind: "folder", X: canvas.X, Y: canvas.Y, Width: canvas.W, Height: canvas.H, Duration: length, Pivot: &pivot,
 		Opacity: num(choose(clip["opacity"], jsonNumber(1)))}
@@ -647,11 +650,14 @@ const canvasMargin = 32
 // by their own keyframes, plus a margin, in frame coordinates and possibly
 // beyond the frame (within one frame size on each side). It is the frame
 // when nothing has a box.
-func folderCanvas(clips []ClipPlan, video VideoSpec) Rect {
+func folderCanvas(clips []ClipPlan, video VideoSpec) (Rect, error) {
 	var box [4]float64
 	found := false
 	for _, clip := range clips {
-		b, ok := clipExtent(clip)
+		b, ok, err := clipExtent(clip)
+		if err != nil {
+			return Rect{}, err
+		}
 		if !ok {
 			continue
 		}
@@ -662,7 +668,7 @@ func folderCanvas(clips []ClipPlan, video VideoSpec) Rect {
 		box = [4]float64{math.Min(box[0], b[0]), math.Min(box[1], b[1]), math.Max(box[2], b[2]), math.Max(box[3], b[3])}
 	}
 	if !found {
-		return Rect{0, 0, video.Width, video.Height}
+		return Rect{0, 0, video.Width, video.Height}, nil
 	}
 	w, h := float64(video.Width), float64(video.Height)
 	left := math.Max(math.Floor(box[0])-canvasMargin, -w)
@@ -671,7 +677,7 @@ func folderCanvas(clips []ClipPlan, video VideoSpec) Rect {
 	bottom := math.Min(math.Ceil(box[3])+canvasMargin, 2*h)
 	// Even sizes keep chroma-subsampled steps exact.
 	cw, ch := int(right-left+1)&^1, int(bottom-top+1)&^1
-	return Rect{int(left), int(top), max(cw, 2), max(ch, 2)}
+	return Rect{int(left), int(top), max(cw, 2), max(ch, 2)}, nil
 }
 
 // fitAnimatedSize lays out a layer with width or height keyframes at the
@@ -707,7 +713,7 @@ func fitAnimatedSize(l *LayerPlan) {
 }
 
 // clipExtent is the frame area a clip can cover over its keyframes.
-func clipExtent(clip ClipPlan) ([4]float64, bool) {
+func clipExtent(clip ClipPlan) ([4]float64, bool, error) {
 	l := clip.Layer
 	var box [4]float64
 	switch clip.Kind {
@@ -717,7 +723,10 @@ func clipExtent(clip ClipPlan) ([4]float64, bool) {
 	case "text":
 		// The measured lines, plus room for glyphs that reach past their
 		// advances and line boxes (italics, swashes, accents).
-		g := layerGeometry(l, VideoSpec{})
+		g, err := layerGeometry(l, VideoSpec{})
+		if err != nil {
+			return box, false, err
+		}
 		box = [4]float64{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}
 		for _, line := range g.lines {
 			box = [4]float64{math.Min(box[0], line.X0), math.Min(box[1], line.Top), math.Max(box[2], line.X1), math.Max(box[3], line.Top+g.size)}
@@ -727,9 +736,9 @@ func clipExtent(clip ClipPlan) ([4]float64, bool) {
 	case "image", "rect", "circle", "box":
 		box = [4]float64{float64(l.X), float64(l.Y), float64(l.X + l.Width), float64(l.Y + l.Height)}
 	default:
-		return box, false
+		return box, false, nil
 	}
-	return growByAnimation(box, l.Animation), true
+	return growByAnimation(box, l.Animation), true, nil
 }
 
 // growByAnimation widens a box by the range of its x/y keyframes, its largest

@@ -84,9 +84,16 @@ func (f googleFamily) weight(want int) int {
 
 func abs(n int) int { return max(n, -n) }
 
+// googleListRetry is how long a failure to get the family list is reused
+// before fetching again, so a missing font doesn't wait on the network for
+// every lookup.
+const googleListRetry = time.Minute
+
 var (
 	googleMu       sync.Mutex
 	googleFamilies map[string]googleFamily // by normalized name
+	googleListErr  error
+	googleListAt   time.Time // when googleListErr happened
 )
 
 // googleFamilyNamed looks a family up in Google's font list.
@@ -94,10 +101,15 @@ func googleFamilyNamed(name string) (googleFamily, error) {
 	googleMu.Lock()
 	defer googleMu.Unlock()
 	if googleFamilies == nil {
+		if googleListErr != nil && time.Since(googleListAt) < googleListRetry {
+			return googleFamily{}, googleListErr
+		}
 		list, err := loadGoogleList()
 		if err != nil {
+			googleListErr, googleListAt = err, time.Now()
 			return googleFamily{}, err
 		}
+		googleListErr = nil
 		googleFamilies = map[string]googleFamily{}
 		for _, f := range list {
 			googleFamilies[font.NormalizeFamily(f.Family)] = f

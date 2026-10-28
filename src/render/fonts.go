@@ -31,7 +31,7 @@ import (
 // Text is measured with the font file libass draws it with, so wrapping,
 // boxes, highlights, and carets fit the glyphs. A family resolves, in order,
 // to a font in the project's font directories, an installed font, a font
-// downloaded from Google Fonts (cached), or a bundled Go font. Fonts that
+// downloaded from Google Fonts (cached), or an explicitly named bundled Go font. Fonts that
 // aren't installed reach libass through the render's fonts directory, under
 // the family name the ASS documents then use.
 
@@ -114,7 +114,7 @@ func fontsOf(video VideoSpec) *fontBook {
 	return defaultFonts
 }
 
-// warnf reports a recoverable problem, such as a missing font, once.
+// warnf reports a recoverable problem once.
 var (
 	warned   sync.Map
 	warnings io.Writer = os.Stderr
@@ -152,20 +152,23 @@ func parseWeight(v any) (int, error) {
 
 // face resolves family at weight (as in CSS: 400 regular, 700 bold) for text
 // drawn at size pixels, which picks optical sizes where the font has them; a
-// size of 0 uses the font's default. It always returns a face.
-func (b *fontBook) face(family string, weight int, size float64) *fontFace {
+// size of 0 uses the font's default. Unresolved families return an error.
+func (b *fontBook) face(family string, weight int, size float64) (*fontFace, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	key := fontKey{font.NormalizeFamily(family), weight, int(math.Round(size))}
 	if f := b.faces[key]; f != nil {
-		return f
+		return f, nil
 	}
-	f := b.resolve(family, weight, size)
+	f, err := b.resolve(family, weight, size)
+	if err != nil {
+		return nil, err
+	}
 	b.faces[key] = f
-	return f
+	return f, nil
 }
 
-func (b *fontBook) resolve(family string, weight int, size float64) *fontFace {
+func (b *fontBook) resolve(family string, weight int, size float64) (*fontFace, error) {
 	if !b.scanned {
 		b.project = scanFontFiles(b.dirs)
 		b.scanned = true
@@ -176,11 +179,11 @@ func (b *fontBook) resolve(family string, weight int, size float64) *fontFace {
 		if f, err := b.load(loc, family, weight, false); err == nil {
 			if f.variable {
 				if inst, err := b.instance(loc, family, weight, size); err == nil {
-					return inst
+					return inst, nil
 				}
 			}
 			f.Bundled = true
-			return f
+			return f, nil
 		}
 	}
 	// Static installed fonts keep their name, and libass picks the weight.
@@ -188,24 +191,27 @@ func (b *fontBook) resolve(family string, weight int, size float64) *fontFace {
 		if f, err := b.load(loc, family, weight, true); err == nil {
 			if f.variable {
 				if inst, err := b.instance(loc, family, weight, size); err == nil {
-					return inst
+					return inst, nil
 				}
 			}
 			f.Name, f.Weight = family, weight
-			return f
+			return f, nil
 		}
 	}
-	if path, err := googleFont(family, weight, size); err == nil {
-		if f, err := b.load(font.FontID{File: path}, family, weight, false); err == nil {
+	// Bundled families are available by their real names, never as substitutes.
+	if name := font.NormalizeFamily(family); name == font.NormalizeFamily("Go") || name == font.NormalizeFamily("Go Mono") {
+		return fallbackFace(family, weight), nil
+	}
+	path, err := googleFont(family, weight, size)
+	if err == nil {
+		var f *fontFace
+		f, err = b.load(font.FontID{File: path}, family, weight, false)
+		if err == nil {
 			f.Bundled = true
-			return f
+			return f, nil
 		}
-	} else if err != errOffline {
-		warnf("font %q: %v", family, err)
 	}
-	f := fallbackFace(family, weight)
-	warnf("font %q isn't installed, in the project's fonts, or on Google Fonts; using %q", family, f.Name)
-	return f
+	return nil, b.missingFontError(family, err)
 }
 
 // load opens one face of a font file, once. With vary, a variable font is set

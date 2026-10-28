@@ -45,7 +45,7 @@ func spanText(layer LayerPlan) string {
 // layerGeometry lays out a text layer as its ASS dialogue draws it: lines of
 // \fs height stacked around the layer's middle, each aligned on the anchor x
 // (see v2TextParts).
-func layerGeometry(l LayerPlan, video VideoSpec) textGeometry {
+func layerGeometry(l LayerPlan, video VideoSpec) (textGeometry, error) {
 	face := l.face
 	if face == nil {
 		weight := l.Weight
@@ -55,7 +55,11 @@ func layerGeometry(l LayerPlan, video VideoSpec) textGeometry {
 				weight = 700
 			}
 		}
-		face = fontsOf(video).face(l.Font, weight, float64(l.FontSize))
+		var err error
+		face, err = fontsOf(video).face(l.Font, weight, float64(l.FontSize))
+		if err != nil {
+			return textGeometry{}, err
+		}
 	}
 	lines := strings.Split(spanText(l), "\n")
 	size := float64(l.FontSize)
@@ -77,7 +81,7 @@ func layerGeometry(l LayerPlan, video VideoSpec) textGeometry {
 			g.chars = append(g.chars, charBox{start + x[k], start + x[k+1], i})
 		}
 	}
-	return g
+	return g, nil
 }
 
 // textTarget is a text clip found by id, with its start on the timeline of
@@ -147,7 +151,10 @@ func attachToText(clips []ClipPlan, video VideoSpec) error {
 // padding. Spaces at the box's edges don't count.
 func coverText(clip *ClipPlan, target textTarget, spec obj, video VideoSpec) error {
 	text := target.clip.Layer
-	g := layerGeometry(text, video)
+	g, err := layerGeometry(text, video)
+	if err != nil {
+		return err
+	}
 	shown := matchedChars(text)
 	var narrowed []bool
 	if spec["match"] != nil {
@@ -187,7 +194,10 @@ func followCaret(clip *ClipPlan, target textTarget, spec obj, video VideoSpec) e
 		return fmt.Errorf("a caret moves by itself; it can't have x or y keyframes")
 	}
 	text := target.clip.Layer
-	g := layerGeometry(text, video)
+	g, err := layerGeometry(text, video)
+	if err != nil {
+		return err
+	}
 	w, h := clip.def["width"], clip.def["height"]
 	clip.Layer.Width, clip.Layer.Height = integer(w), integer(h)
 	if w == nil {
