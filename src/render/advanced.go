@@ -430,7 +430,7 @@ func (c *advancedContext) buildClip(clip obj, o owner, start, length time.Durati
 		if err != nil {
 			return nil, err
 		}
-		source, err := path(c.base, value)
+		source, err := mediaPath(c.base, value, "image")
 		if err != nil {
 			return nil, err
 		}
@@ -1007,7 +1007,7 @@ func (c *advancedContext) classicVariant(scene ScenePlan, layer LayerPlan, set o
 		}
 		content = bound
 		if key == "path" {
-			if content, err = path(c.base, bound); err != nil {
+			if content, err = mediaPath(c.base, bound, "image"); err != nil {
 				return LayerPlan{}, err
 			}
 		}

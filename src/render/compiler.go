@@ -771,7 +771,10 @@ func path(base string, v any) (string, error) {
 		return "", nil
 	}
 	if strings.Contains(s, "://") {
-		return "", fmt.Errorf("unsupported media URI %q", s)
+		if _, err := mediaURL(s); err != nil {
+			return "", err
+		}
+		return s, nil
 	}
 	if !filepath.IsAbs(s) {
 		s = filepath.Join(base, s)
@@ -834,7 +837,7 @@ func LoadWithTemplateBase(videoPath, templatePath, templateBaseDir string) (*Pla
 
 // FromBytes validates video and template YAML or JSON bytes and builds a render plan.
 // Media paths are relative to baseDir. Work artifacts are placed in .yaml2video.
-// Documents are supplied in memory, schemas are embedded, and media uses the filesystem.
+// Documents are supplied in memory, schemas are embedded, and media may be local or HTTP(S).
 func FromBytes(videoData, templateData []byte, baseDir string) (*Plan, error) {
 	v, err := documentBytes(videoData, "video", "video.schema.json")
 	if err != nil {
@@ -878,6 +881,9 @@ func compose(v, t obj, base string) (*Plan, error) {
 	// Font files in fonts/ next to the video, and any listed in the template.
 	fontDirs := []string{filepath.Join(base, "fonts")}
 	for _, entry := range list(object(defaults["typography"])["fonts"]) {
+		if strings.Contains(str(entry), "://") {
+			return nil, fmt.Errorf("defaults.typography.fonts: font files must be local: %q", str(entry))
+		}
 		dir, err := path(base, entry)
 		if err != nil {
 			return nil, fmt.Errorf("defaults.typography.fonts: %w", err)
@@ -886,7 +892,7 @@ func compose(v, t obj, base string) (*Plan, error) {
 	}
 	p.Video.fonts = fontBookFor(fontDirs)
 
-	logo, err := path(base, assets["logo"])
+	logo, err := mediaPath(base, assets["logo"], "image")
 	if err != nil {
 		return nil, err
 	}
@@ -1066,7 +1072,7 @@ func compose(v, t obj, base string) (*Plan, error) {
 	}
 
 	if music := object(assets["music"]); len(music) > 0 {
-		source, err := path(base, music["path"])
+		source, err := mediaPath(base, music["path"], "audio")
 		if err != nil {
 			return nil, err
 		}
@@ -1125,7 +1131,7 @@ func compose(v, t obj, base string) (*Plan, error) {
 }
 
 func audioLayer(track, defaults obj, base string, at, remaining time.Duration) (AudioLayerPlan, error) {
-	source, err := path(base, track["path"])
+	source, err := mediaPath(base, track["path"], "audio")
 	if err != nil {
 		return AudioLayerPlan{}, err
 	}

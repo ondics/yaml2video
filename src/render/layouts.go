@@ -85,7 +85,7 @@ func composeBackground(scene *ScenePlan, background any, p *Plan, base string, m
 	if err != nil {
 		return err
 	}
-	source, err := path(base, value)
+	source, err := mediaPath(base, value, "image")
 	if err != nil {
 		return err
 	}
@@ -168,7 +168,7 @@ func composeClassicScene(scene *ScenePlan, l, item obj, p *Plan, base string, de
 		if el["visible"] == false {
 			return nil
 		}
-		source, err := path(base, asset)
+		source, err := mediaPath(base, asset, "image")
 		if err != nil {
 			return err
 		}
@@ -185,7 +185,7 @@ func composeClassicScene(scene *ScenePlan, l, item obj, p *Plan, base string, de
 	}
 
 	if (role == "intro" || role == "outro") && item["image"] != nil && l["image"] == nil {
-		source, err := path(base, item["image"])
+		source, err := mediaPath(base, item["image"], "image")
 		if err != nil {
 			return err
 		}

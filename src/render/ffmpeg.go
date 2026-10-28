@@ -224,7 +224,7 @@ func mediaLayerStream(plan *Plan, scene ScenePlan, layer LayerPlan) *ffmpeg.Stre
 func mediaInput(plan *Plan, scene ScenePlan, layer LayerPlan) *ffmpeg.Stream {
 	var input *ffmpeg.Stream
 	if layer.Kind == "image" {
-		input = ffmpeg.Input(layer.Path, ffmpeg.KwArgs{
+		input = mediaInputStream(layer.Path, ffmpeg.KwArgs{
 			"loop":      1,
 			"framerate": plan.Video.FPS,
 			"t":         ffTime(scene.Duration),
@@ -235,7 +235,7 @@ func mediaInput(plan *Plan, scene ScenePlan, layer LayerPlan) *ffmpeg.Stream {
 			inputArgs["ss"] = ffTime(layer.SourceOffset)
 		}
 
-		input = ffmpeg.Input(layer.Path, inputArgs).
+		input = mediaInputStream(layer.Path, inputArgs).
 			Video().
 			Filter("trim", nil, ffmpeg.KwArgs{
 				"duration": ffTime(mediaDuration(layer.Duration, scene.Duration)),
@@ -529,7 +529,7 @@ func mixAudio(tracks []*ffmpeg.Stream, duration time.Duration) *ffmpeg.Stream {
 
 // musicSource is the music looped or trimmed to the timeline.
 func (p *Plan) musicSource() *ffmpeg.Stream {
-	return ffmpeg.Input(p.Music.Path, ffmpeg.KwArgs{"stream_loop": -1}).Audio().
+	return mediaInputStream(p.Music.Path, ffmpeg.KwArgs{"stream_loop": -1}).Audio().
 		Filter("atrim", nil, ffmpeg.KwArgs{"duration": ffTime(p.Duration)}).
 		Filter("asetpts", ffmpeg.Args{"PTS-STARTPTS"})
 }
@@ -587,7 +587,7 @@ func audioSources(scenes []ScenePlan) map[string][]*ffmpeg.Stream {
 		if layer.SourceOffset > 0 {
 			inputArgs["ss"] = ffTime(layer.SourceOffset)
 		}
-		input := ffmpeg.Input(layer.Path, inputArgs).Audio()
+		input := mediaInputStream(layer.Path, inputArgs).Audio()
 		if counts[key] == 1 {
 			sources[key] = []*ffmpeg.Stream{input}
 			continue

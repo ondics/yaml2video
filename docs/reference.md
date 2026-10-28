@@ -18,6 +18,16 @@ If neither `-t` nor `video.template_file` is supplied, rendering errors. `video.
 
 Schema validation checks structure. Composition and render-plan validation additionally check bindings, media paths, timing, and supported effect combinations. Passing schema validation alone does not guarantee a successful render.
 
+## Remote media
+
+Image and audio paths accept local files or `http://` and `https://` URLs. This includes `assets.logo`, `assets.music.path`, content images and audio, layout image elements, image backgrounds, and advanced image/audio clips. URLs supplied through bindings such as `$(BILD)` work the same way. Other URI schemes are not supported; templates and fonts remain local.
+
+The full URL, including its signed query string, is passed unchanged to FFmpeg. During document loading, remote media is downloaded to a temporary file and inspected with **ffprobe**; neither a filename extension nor the server's Content-Type is required. The temporary file is removed after validation. HTTP failures, invalid media, and mismatched image/audio types fail validation (HTTP **400** from `POST /render`), before a render starts. Local file validation is unchanged.
+
+Each remote validation has a **15-second total timeout** (download and probe) and a **64 MiB download limit**. FFmpeg remote inputs have a **15-second I/O timeout**, including audio loudness analysis. URLs are fetched again during rendering, so signed links must remain valid until rendering finishes. Supported remote image codecs are PNG, JPEG, WebP, BMP, GIF, TIFF, and JPEG 2000; audio must contain a recognized audio stream.
+
+Remote media URLs make outbound requests from the yaml2video host, and signed URLs may appear in errors and command previews. Only accept trusted documents, or restrict outbound destinations at the deployment/network layer to prevent access to internal services. There is no built-in host allowlist.
+
 ## Video document
 
 | Field | Requirement and purpose |

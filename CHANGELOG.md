@@ -6,6 +6,7 @@ All notable changes to the project are documented here.
 
 ### Added
 
+- HTTP(S) image and audio URLs in video/template documents, including signed URLs and variable bindings. Remote media is validated with ffprobe before rendering, with HTTP/type errors returned as HTTP 400 by the API, a 15-second validation timeout, a 64 MiB download limit, and FFmpeg input I/O timeouts. See `docs/reference.md#remote-media`.
 - Named layouts (`docs/layouts.md`):
   - `layout:` holds any number of named layouts; `intro`, `slide`, and `outro` remain the role defaults, and a layout entry may be the name of another layout;
   - content items choose a layout with `layout:`, and template sections set a default for their scenes with `layout:`;
