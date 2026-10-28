@@ -27,8 +27,8 @@ cli: ## Run yaml2video with ARGS in the container (ARGS="--help")
 	@$(DC) run --rm -v "$(CURDIR):/data" yaml2video $(ARGS)
 
 fonts: ARGS =
-fonts: ## List font families (ARGS="--offline-only" for offline families)
-	@$(DC) run --rm -v "$(CURDIR):/data" yaml2video fonts $(ARGS)
+fonts: ## List font families (OFFLINE=1 for offline families)
+	@$(DC) run --rm -v "$(CURDIR):/data" yaml2video fonts $(if $(filter 1,$(OFFLINE)),--offline-only) $(ARGS)
 
 render: up ## FILE=... DIR=(Default: dir of FILE)
 	@test -n "$(FILE)" || { echo "Error: FILE is required" >&2; exit 1; }
