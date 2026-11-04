@@ -55,7 +55,7 @@ jobs:
                   GOARCH: ${{ matrix.goarch }}
               run: |
                   mkdir -p dist/build dist/release
-                  go build -trimpath -ldflags="-s -w" -o "dist/build/${{ matrix.binary }}" ./src/cmd/yaml2video
+                  go build -trimpath -ldflags="-s -w" -o "dist/build/${{ matrix.binary }}" ./cmd/yaml2video
 
             - name: Package archive
               env:

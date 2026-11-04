@@ -2,6 +2,19 @@
 
 Keep changes focused, follow the existing code style, and add tests for behavior changes.
 
+## Project layout
+
+- `cmd/yaml2video/main.go`: thin executable entry point delegating to `internal/cli`.
+- `internal/cli/`: argument parsing, commands, help, and console output.
+- `internal/project/`: video project models and loading.
+- `internal/render/`: document validation, render planning, FFmpeg execution, and fonts.
+- `internal/server/`: HTTP server, routing, and middleware; `api/` provides response helpers, `controller/` manages renders and storage, and `handlers/` implements endpoints.
+- `internal/template/`: YAML template expansion.
+- `internal/types/`: shared value types.
+- `docs/`: documentation and authoritative JSON schemas.
+
+`docs/schemas.go` intentionally remains alongside `docs/*.schema.json` so `//go:embed` can include them without parent-directory paths. These JSON files are the single source used by editors, documentation, and the runtime; do not duplicate them under `internal/`.
+
 ## Develop with Docker
 
 Install Docker with Compose and `make`, then clone the repository and enter its folder. No local Go or FFmpeg installation is required.
@@ -26,7 +39,7 @@ Install Go **1.27.1 or later** (see `go.mod`) and clone the repository. From the
 ```sh
 go mod download
 go test ./...
-go run ./src -n examples/simple/video.yaml
+go run ./cmd/yaml2video -n examples/simple/video.yaml
 ```
 
 For actual rendering, install FFmpeg and fonts. Text and subtitles require FFmpeg's `ass` filter (libass enabled). Dry-run mode (`-n`) validates YAML and prints rendering commands without creating a video.
@@ -36,12 +49,12 @@ For actual rendering, install FFmpeg and fonts. Text and subtitles require FFmpe
 With local Go installed, run these commands from the project folder:
 
 ```sh
-gofmt -w src
+gofmt -w cmd internal docs
 go vet ./...
 go test -race ./...
 go build ./...
-go run ./src -n -t examples/normal/template.yaml examples/normal/video.yaml
-go run ./src -n -t examples/complex/template.yaml examples/complex/video.yaml
+go run ./cmd/yaml2video -n -t examples/normal/template.yaml examples/normal/video.yaml
+go run ./cmd/yaml2video -n -t examples/complex/template.yaml examples/complex/video.yaml
 ```
 
 CI checks formatting, runs vet and race-enabled tests, builds all packages, and validates the normal and complex examples. `make test` is a quick test run; it does not run all CI checks.

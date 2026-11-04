@@ -20,7 +20,7 @@ COPY . .
 
 RUN CGO_ENABLED=0 go build -trimpath \
     -ldflags="-s -w" \
-    -o /usr/local/bin/yaml2video ./src
+    -o /usr/local/bin/yaml2video ./cmd/yaml2video
 
 WORKDIR /data
 ENTRYPOINT ["yaml2video"]
