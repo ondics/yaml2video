@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"os/exec"
@@ -61,6 +62,7 @@ func progressTestPlan(t *testing.T) *Plan {
 }
 
 func TestRenderWithProgressWeighted(t *testing.T) {
+	t.Setenv("YAML2VIDEO_SCENE_JOBS", "1") // one scene at a time: a fixed event order
 	fakeFFmpeg(t, "printf 'out_time_us=500000\nout_time_us=100000\nout_time_us=100000000\nprogress=end\n'\n")
 	plan := progressTestPlan(t)
 	commands, err := plan.Commands()
@@ -78,7 +80,8 @@ func TestRenderWithProgressWeighted(t *testing.T) {
 	}
 	first := events[0]
 	last := events[len(events)-1]
-	if first != (Progress{Stage: "scene", Total: 3}) || last != (Progress{Stage: "done", Percent: 100, Completed: 3, Total: 3}) {
+	// Two scenes, their transition, and the assembly.
+	if first != (Progress{Stage: "scene", Total: 4}) || last != (Progress{Stage: "done", Percent: 100, Completed: 4, Total: 4}) {
 		t.Fatalf("first/last = %+v / %+v", first, last)
 	}
 	for i, event := range events {
@@ -90,12 +93,15 @@ func TestRenderWithProgressWeighted(t *testing.T) {
 		}
 	}
 	// Five events per command: start, three timestamps, successful completion.
+	// Weights: the scenes' 1 s and 3 s, the 1 s transition, and the assembly
+	// at a twentieth of the 3 s video.
+	const total = 1 + 3 + 1 + 0.15
 	for _, tc := range []struct {
 		index   int
 		percent float64
 	}{
-		{1, 100 * 0.5 / 7}, {2, 100 * 0.5 / 7}, {3, 100.0 / 7},
-		{6, 100 * 1.5 / 7}, {11, 100 * 4.5 / 7},
+		{1, 100 * 0.5 / total}, {2, 100 * 0.5 / total}, {3, 100.0 / total},
+		{6, 100 * 1.5 / total}, {11, 100 * 4.5 / total},
 	} {
 		if math.Abs(events[tc.index].Percent-tc.percent) > 1e-9 {
 			t.Errorf("event %d = %g, want %g", tc.index, events[tc.index].Percent, tc.percent)
@@ -105,7 +111,7 @@ func TestRenderWithProgressWeighted(t *testing.T) {
 		t.Fatalf("final event = %+v", events[10])
 	}
 	raw, err := json.Marshal(last)
-	if err != nil || string(raw) != `{"stage":"done","percent":100,"completed":3,"total":3}` {
+	if err != nil || string(raw) != `{"stage":"done","percent":100,"completed":4,"total":4}` {
 		t.Fatalf("JSON = %s, err = %v", raw, err)
 	}
 }
@@ -183,5 +189,36 @@ func TestRenderWithRealFFmpegProgress(t *testing.T) {
 	}
 	if !timestampProgress || last.Stage != "done" || last.Percent != 100 {
 		t.Fatalf("real timestamp progress = %v, last = %+v", timestampProgress, last)
+	}
+}
+
+// Scenes render at the same time; the final pass waits for all of them.
+func TestRenderScenesConcurrently(t *testing.T) {
+	t.Setenv("YAML2VIDEO_SCENE_JOBS", "2")
+	log := filepath.Join(t.TempDir(), "calls")
+	fakeFFmpeg(t, fmt.Sprintf("echo start >> %q\nprintf 'out_time_us=500000\\n'\nsleep 0.3\necho end >> %q\n", log, log))
+	var events []Progress
+	if err := progressTestPlan(t).RenderWithProgress(context.Background(), func(p Progress) { events = append(events, p) }); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Fields(string(calls)); strings.Join(got, " ") != "start start end end start end start end" {
+		t.Errorf("calls = %v, want both scenes running before either ends, then the transition, then the assembly", got)
+	}
+	completed := 0
+	for i, event := range events {
+		if i > 0 && event.Percent < events[i-1].Percent {
+			t.Fatalf("non-monotonic events: %+v", events)
+		}
+		if event.Stage == "final" && event.Completed < 2 {
+			t.Fatalf("final pass started before the scenes finished: %+v", event)
+		}
+		completed = max(completed, event.Completed)
+	}
+	if last := events[len(events)-1]; last != (Progress{Stage: "done", Percent: 100, Completed: 4, Total: 4}) || completed != 4 {
+		t.Fatalf("last event = %+v", last)
 	}
 }

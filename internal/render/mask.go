@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -9,11 +10,54 @@ import (
 )
 
 // maskAlpha retains the incoming transparency (including fades and transparent
-// padding) while clipping a media layer to its requested geometry.
-func maskAlpha(input *ffmpeg.Stream, mask string) *ffmpeg.Stream {
-	return input.Filter("format", ffmpeg.Args{"gbrap"}).Filter("geq", nil, ffmpeg.KwArgs{
-		"r": "r(X,Y)", "g": "g(X,Y)", "b": "b(X,Y)", "a": fmt.Sprintf("alpha(X,Y)*(%s)", mask),
-	})
+// padding) while clipping a media layer to its requested geometry. geq runs
+// its expression for every pixel of every frame, by far the costliest step of
+// a render, so it only computes the coverage on the alpha plane, and a static
+// mask (one without T) only once: blend repeats that frame for the rest.
+func maskAlpha(input *ffmpeg.Stream, mask string, static bool) *ffmpeg.Stream {
+	split := input.Filter("format", ffmpeg.Args{"gbrap"}).Split()
+	alpha := split.Get("1").Filter("alphaextract", nil)
+	if static {
+		coverage := alpha.Split()
+		mask := coverage.Get("1").
+			Filter("trim", nil, ffmpeg.KwArgs{"end_frame": 1}).
+			Filter("geq", nil, ffmpeg.KwArgs{"lum": fmt.Sprintf("255*(%s)", mask)})
+		alpha = ffmpeg.Filter([]*ffmpeg.Stream{coverage.Get("0"), mask}, "blend", nil, ffmpeg.KwArgs{"all_mode": "multiply"})
+	} else {
+		alpha = alpha.Filter("geq", nil, ffmpeg.KwArgs{"lum": fmt.Sprintf("lum(X,Y)*(%s)", mask)})
+	}
+	return ffmpeg.Filter([]*ffmpeg.Stream{split.Get("0"), alpha}, "alphamerge", nil)
+}
+
+// frameMask is a w×h stream, in src's format and following its frames, whose
+// planes hold 255×expr, a value of the frame time T in 0–1. It evaluates expr
+// once per frame, on a 2×2 crop of src that a nearest-neighbor scale spreads:
+// evaluating a per-frame value for every pixel (with geq or a blend
+// expression) costs far more. Planes are geq's plane names; cb and cr follow
+// lum unless given.
+func frameMask(src *ffmpeg.Stream, expr string, w, h int, planes ...string) *ffmpeg.Stream {
+	args := ffmpeg.KwArgs{}
+	for _, plane := range planes {
+		args[plane] = fmt.Sprintf("255*(%s)", expr)
+	}
+	return src.Filter("crop", nil, ffmpeg.KwArgs{"w": "min(2,iw)", "h": "min(2,ih)", "x": 0, "y": 0}).
+		Filter("geq", nil, args).
+		Filter("scale", nil, ffmpeg.KwArgs{"w": w, "h": h, "flags": "neighbor"})
+}
+
+// scaleAlpha multiplies the alpha of a w×h stream by factor, a value of the
+// frame time T in 0–1; see frameMask.
+func scaleAlpha(input *ffmpeg.Stream, factor string, w, h int) *ffmpeg.Stream {
+	split := input.Filter("format", ffmpeg.Args{"gbrap"}).Split()
+	alpha := split.Get("1").Filter("alphaextract", nil).Split()
+	mask := frameMask(alpha.Get("1"), factor, w, h, "lum")
+	scaled := ffmpeg.Filter([]*ffmpeg.Stream{alpha.Get("0"), mask}, "blend", nil, ffmpeg.KwArgs{"all_mode": "multiply"})
+	return ffmpeg.Filter([]*ffmpeg.Stream{split.Get("0"), scaled}, "alphamerge", nil)
+}
+
+// maskShape clips a layer to its shape and animated size; see maskAlpha.
+func maskShape(input *ffmpeg.Stream, layer LayerPlan) *ffmpeg.Stream {
+	return maskAlpha(input, shapeMask(layer), !layer.Animation.Has("width", "height"))
 }
 
 // masked reports whether a layer needs an alpha mask for its shape or its
@@ -71,11 +115,48 @@ func sizeMask(layer LayerPlan) string {
 	return vars + "+clip(0.5-hypot(max(ld(3),0),max(ld(4),0))-min(max(ld(3),ld(4)),0)+ld(2),0,1)"
 }
 
-// blurPanel blurs only the previously composited video, never the text or tint.
-// The masked full-frame copy avoids out-of-bounds crops for panels near edges.
-func blurPanel(base *ffmpeg.Stream, x, y, width, height int, sigma float64) *ffmpeg.Stream {
+// blurPanel blurs only the previously composited video, never the text or
+// tint. Only the panel and a margin around it are blurred, so the panel sees
+// the same neighbors as a full-frame blur; the crops clamp to the frame (whose
+// size the expressions read as iw and ih) for panels near or past its edges.
+func blurPanel(base *ffmpeg.Stream, x, y, width, height int, sigma float64, enable string, canvas bool) *ffmpeg.Stream {
+	right, bottom := x+width, y+height
+	if right <= 0 || bottom <= 0 {
+		return base // entirely left of or above the frame
+	}
+	// overlay rounds positions on subsampled (yuv420p) frames down to even
+	// pixels, so the patch runs from even offsets to even ends, and a mask
+	// hides what it covers beyond the panel.
+	patchX, patchY := max(x, 0)&^1, max(y, 0)&^1
+	patchRight, patchBottom := (right+1)&^1, (bottom+1)&^1
+	// The area crop runs on the frame's own format: even sizes for yuv420p.
+	margin := (int(math.Ceil(3*sigma)) + 1) &^ 1
+	areaX, areaY := max(patchX-margin, 0), max(patchY-margin, 0)
+	blurArgs := ffmpeg.KwArgs{"sigma": sigma}
+	if enable != "" {
+		blurArgs["enable"] = enable
+	}
 	split := base.Split()
-	blurred := split.Get("1").Filter("gblur", nil, ffmpeg.KwArgs{"sigma": sigma})
-	mask := fmt.Sprintf("between(X,%d,%d)*between(Y,%d,%d)", x, x+width-1, y, y+height-1)
-	return split.Get("0").Overlay(maskAlpha(blurred, mask), eofActionEndAll, ffmpeg.KwArgs{"x": 0, "y": 0})
+	patch := split.Get("1").
+		Filter("crop", nil, ffmpeg.KwArgs{
+			"x": areaX, "y": areaY,
+			"w": fmt.Sprintf("max(min(%d,iw)-%d,2)", patchRight+margin, areaX),
+			"h": fmt.Sprintf("max(min(%d,ih)-%d,2)", patchBottom+margin, areaY),
+		}).
+		Filter("format", ffmpeg.Args{"gbrap"}).
+		Filter("gblur", nil, blurArgs).
+		Filter("crop", nil, ffmpeg.KwArgs{
+			"x": patchX - areaX, "y": patchY - areaY, "exact": 1,
+			"w": fmt.Sprintf("max(min(%d,iw)-%d,1)", patchRight-areaX, patchX-areaX),
+			"h": fmt.Sprintf("max(min(%d,ih)-%d,1)", patchBottom-areaY, patchY-areaY),
+		})
+	if patchX != x || patchY != y || patchRight != right || patchBottom != bottom {
+		mask := fmt.Sprintf("between(X,%d,%d)*between(Y,%d,%d)", x-patchX, right-1-patchX, y-patchY, bottom-1-patchY)
+		patch = maskAlpha(patch, mask, true)
+	}
+	args := ffmpeg.KwArgs{"x": patchX, "y": patchY}
+	if enable != "" {
+		args["enable"] = enable
+	}
+	return split.Get("0").Overlay(patch, eofActionPass, overlayArgs(args, canvas))
 }

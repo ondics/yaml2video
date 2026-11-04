@@ -95,8 +95,9 @@ func TestExamplePlans(t *testing.T) {
 			if err != nil {
 				t.Fatalf("commands: %v", err)
 			}
-			if len(commands) != tc.scenes+1 {
-				t.Errorf("commands=%d want %d", len(commands), tc.scenes+1)
+			// Every boundary blends: scenes, transitions, and the assembly.
+			if len(commands) != 2*tc.scenes {
+				t.Errorf("commands=%d want %d", len(commands), 2*tc.scenes)
 			}
 			if tc.name == "normal" {
 				assertNormal(t, p, commands)
@@ -133,7 +134,7 @@ func assertNormal(t *testing.T, p *Plan, commands [][]string) {
 		t.Errorf("ordered image effects: %+v", layer.Effects)
 	}
 	graph := strings.Join(commands[1], " ")
-	for _, want := range []string{"zoompan", "vignette", "gblur"} {
+	for _, want := range []string{"perspective=", "sense=source", "vignette", "gblur"} {
 		if !strings.Contains(graph, want) {
 			t.Errorf("normal command missing %s", want)
 		}

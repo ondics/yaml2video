@@ -16,7 +16,7 @@ func TestInlineSources(t *testing.T) {
 	got := strings.Join(inlineSources(args), " ")
 	want := "ffmpeg -i assets/music.mp3 -filter_complex " +
 		"color=c=black:s=64x64:r=30:d=1[ysrc0];" +
-		"movie=filename='assets/card.png',loop=loop=-1:size=1:start=0,setpts=N/30/TB,trim=duration=0.999999[ysrc1];" +
+		"movie=filename='assets/card.png',loop=loop=-1:size=1:start=0,settb=AVTB,setpts=N/30/TB,trim=duration=0.999999[ysrc1];" +
 		"color=c=red:s=8x8:r=30:d=0.5,format=yuva444p[ysrc3];" +
 		"[ysrc1]format=rgba[s0];[ysrc0][s0]overlay[s1];[s1][ysrc3]overlay[s2];[0:a]volume=0.5[s3] " +
 		"-map [s2] -map [s3] out.mkv -y"

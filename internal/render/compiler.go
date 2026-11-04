@@ -886,6 +886,7 @@ func compose(v, t obj, base string) (*Plan, error) {
 			Height:     integer(format["height"]),
 			FPS:        integer(format["fps"]),
 			CRF:        integer(format["crf"]),
+			Preset:     str(format["preset"]),
 			Background: backgroundColor(theme["background"])},
 		WorkDir: filepath.Join(base, ".yaml2video"),
 		Output:  filepath.Join(base, "output.mp4"),

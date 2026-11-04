@@ -105,8 +105,10 @@ func inlineSource(in inputSpec) (string, bool) {
 	still := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".webp": true, ".bmp": true}
 	if len(opts) == 3 && opts["loop"] == "1" && opts["framerate"] != "" && opts["t"] != "" &&
 		still[strings.ToLower(filepath.Ext(in.source))] && !strings.ContainsAny(in.source, `'\:,;[]`) {
-		// One decoded frame, repeated at the frame rate for the duration.
-		return fmt.Sprintf("movie=filename='%s',loop=loop=-1:size=1:start=0,setpts=N/%s/TB,trim=duration=%s",
+		// One decoded frame, repeated at the frame rate for the duration. An
+		// image's time base is 1/25: settb keeps the frame times exact, or
+		// every sixth frame at 30 fps would share a timestamp and drop.
+		return fmt.Sprintf("movie=filename='%s',loop=loop=-1:size=1:start=0,settb=AVTB,setpts=N/%s/TB,trim=duration=%s",
 			in.source, opts["framerate"], opts["t"]), true
 	}
 	return "", false

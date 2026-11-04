@@ -2,6 +2,36 @@
 
 All notable changes to the project are documented here.
 
+## 2026-11-04
+
+### Changed
+
+- Faster rendering, most of all on small servers. On 2 CPU cores (Debian's FFmpeg 5.1), the examples render in an eighth to a quarter of the time: normal 81 s → 11 s, complex 64 s → 8 s, advanced 84 s → 20 s, layouts 25 s → 6 s, showcase 211 s (3.5 m) → 85 s (1.4 m).
+  - The output is rendered in pieces and joined without encoding again: each scene encodes its own frames, each transition blends only the frames two scenes share, and a last step concatenates the pieces and adds the audio. Before, every scene was saved losslessly, then the whole video was decoded, blended, and encoded again. Scenes shorter than the transitions at both their ends still render in one final pass.
+  - Rounded-rectangle and circle masks, and circle shapes, are computed once instead of for every pixel of every frame; animated masks only compute the alpha plane.
+  - Keyframed opacity and effect mixes are evaluated once per frame instead of once per pixel.
+  - Glass panels blur only the panel and a margin around it, not the whole frame.
+  - Scaled and rotated layers are transformed on a canvas that covers their path, not the whole frame, and only the part of a layer that reaches the frame is transformed (folder canvases often extend past it).
+  - Still images are fitted, and their constant effects applied, once instead of in every frame.
+  - The frames transitions blend are kept as lossless H.264 (`-qp 0`) instead of FFV1: the same pixels, written and read in about half the time.
+  - Effect clips with RGB-only adjustments (`glow`, `rgb_split`, sepia/warm/cool color filters) only process the frames of their window; before, every frame of the scene or video was converted to RGB and back.
+  - Constant vignettes are computed once (`eval=init`).
+  - Scenes render in parallel, one FFmpeg process per CPU core up to 4 (`YAML2VIDEO_SCENE_JOBS` overrides).
+- The final encode uses x264's `veryfast` preset (was `slow`), about twice as fast at the same CRF with no visible difference (SSIM 0.998 against `slow` on the examples). Template `format.preset` selects another preset.
+
+### Fixed
+
+- Slow zooms and moves no longer step and jitter:
+  - `pan_zoom` samples the image with subpixel precision (FFmpeg's `perspective`, cubic) instead of `zoompan`, which crops at whole pixels;
+  - `x`/`y` keyframes move layers with subpixel precision; overlay positions were whole pixels, and even ones on yuv420p frames;
+  - still images had frame times on a 25 fps grid, so at 30 fps every sixth frame repeated and the next was skipped;
+  - scaled, rotated, and moving layers use cubic interpolation, so their detail no longer pulses as they move.
+- Keyframed scale, rotation, and camera moves ran one frame early (`perspective` counts frames from 1).
+- Scaled or rotated layers and folders whose canvas started at an odd x or y were drawn one pixel off: FFmpeg's overlay rounds positions on yuv420p frames down to even pixels.
+- Scenes with an image layer lost their last frame (the overlay ended the scene as the image ended), so the video ran short of the audio by a frame per scene.
+- The output was tagged full range with the RGB ("gbr") color matrix; it is now limited range with the BT.601 matrix its colors were converted with, consistently across scenes.
+- Transitions last a whole number of frames.
+
 ## 2026-10-28
 
 - HTTP(S) image and audio URLs in video/template documents, including signed URLs and variable bindings. Remote media is validated with ffprobe before rendering, with HTTP/type errors returned as HTTP 400 by the API, a 15-second validation timeout, a 64 MiB download limit, and FFmpeg input I/O timeouts. See `docs/reference.md#remote-media`.

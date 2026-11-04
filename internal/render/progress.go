@@ -12,8 +12,9 @@ import (
 )
 
 // Progress describes duration-weighted render progress. Stage is "scene",
-// "final", or "done". Completed and Total count FFmpeg commands (one per scene
-// plus the final pass). Percent is monotonic in [0, 100]; only success emits 100.
+// "final", or "done". Completed and Total count FFmpeg commands: one per scene,
+// then one per blended transition and one that assembles the output (or a
+// single final pass when scenes are too short to render in pieces). Percent is monotonic in [0, 100]; only success emits 100.
 // This is media-duration progress, not an estimate of remaining wall-clock time.
 type Progress struct {
 	Stage     string  `json:"stage"`
@@ -24,26 +25,35 @@ type Progress struct {
 
 type renderProgress struct {
 	weights  []float64
+	rendered []float64 // seconds of media each command has rendered
+	finished int
 	total    float64
 	percent  float64
 	callback func(Progress)
 }
 
 func newRenderProgress(weights []float64, callback func(Progress)) *renderProgress {
-	p := &renderProgress{weights: weights, callback: callback}
+	p := &renderProgress{weights: weights, rendered: make([]float64, len(weights)), callback: callback}
 	for _, weight := range weights {
 		p.total += weight
 	}
 	return p
 }
 
-func (p *renderProgress) report(stage string, completed int, seconds float64) {
-	work := 0.0
-	for _, weight := range p.weights[:completed] {
-		work += weight
+// report records that command has rendered seconds of media, or all of it
+// when finished, and emits the progress of all commands. Commands may run
+// concurrently; Completed counts the finished ones.
+func (p *renderProgress) report(stage string, command int, seconds float64, finished bool) {
+	if command < len(p.weights) {
+		p.rendered[command] = min(max(seconds, 0), p.weights[command])
+		if finished {
+			p.rendered[command] = p.weights[command]
+			p.finished++
+		}
 	}
-	if completed < len(p.weights) {
-		work += min(max(seconds, 0), p.weights[completed])
+	work := 0.0
+	for _, rendered := range p.rendered {
+		work += rendered
 	}
 	percent := 0.0
 	if p.total > 0 {
@@ -56,7 +66,7 @@ func (p *renderProgress) report(stage string, completed int, seconds float64) {
 	}
 	p.percent = max(p.percent, percent)
 	if p.callback != nil {
-		p.callback(Progress{Stage: stage, Percent: p.percent, Completed: completed, Total: len(p.weights)})
+		p.callback(Progress{Stage: stage, Percent: p.percent, Completed: p.finished, Total: len(p.weights)})
 	}
 }
 

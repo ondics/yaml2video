@@ -28,15 +28,22 @@ func TestV2GraphIncludesEffectsAudioAndTransition(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Two scenes, the transition between them, and the assembly.
+	if len(commands) != 4 {
+		t.Fatalf("commands = %d, want 4", len(commands))
+	}
 	scene := strings.Join(commands[0], " ")
-	final := strings.Join(commands[len(commands)-1], " ")
-	for _, part := range []string{"zoompan", "vignette", "fade=", "alpha=1"} {
+	transition := strings.Join(commands[2], " ")
+	final := strings.Join(commands[3], " ")
+	for _, part := range []string{"perspective=", "sense=source", "vignette", "fade=", "alpha=1"} {
 		if !strings.Contains(scene, part) {
 			t.Errorf("scene missing %q: %s", part, scene)
 		}
 	}
-
-	for _, part := range []string{"transition=wipeleft", "adelay", "delays=500", "afade", "loudnorm", "sidechaincompress", "asplit", "amix"} {
+	if !strings.Contains(transition, "transition=wipeleft") {
+		t.Errorf("transition missing its blend: %s", transition)
+	}
+	for _, part := range []string{"-f concat", "-vcodec copy", "adelay", "delays=500", "afade", "loudnorm", "sidechaincompress", "asplit", "amix"} {
 		if !strings.Contains(final, part) {
 			t.Errorf("final missing %q: %s", part, final)
 		}
@@ -148,5 +155,25 @@ func TestV2TextEffectASS(t *testing.T) {
 		if !strings.Contains(doc, part) {
 			t.Errorf("ASS missing %q: %s", part, doc)
 		}
+	}
+}
+
+func TestFinalEncodePreset(t *testing.T) {
+	p := testV2Plan()
+	commands, err := p.Commands()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Scenes encode their own frames for the output.
+	if scene := strings.Join(commands[0], " "); !strings.Contains(scene, "-preset "+defaultPreset) {
+		t.Errorf("output encode does not use the default preset: %s", scene)
+	}
+
+	p.Video.Preset = "slow"
+	if commands, err = p.Commands(); err != nil {
+		t.Fatal(err)
+	}
+	if scene := strings.Join(commands[0], " "); !strings.Contains(scene, "-preset slow") {
+		t.Errorf("output encode ignores format.preset: %s", scene)
 	}
 }

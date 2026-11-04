@@ -433,3 +433,44 @@ func flatten(commands [][]string) []string {
 	}
 	return out
 }
+
+// A scaled or rotated layer's canvas covers its rest box and every frame of
+// its path within the space, and no more than that plus a margin.
+func TestTransformCanvasCoversPath(t *testing.T) {
+	s := space{Rect: Rect{0, 0, 1080, 1920}, fps: 30}
+	spin := &Animation{Props: map[string][]Keyframe{
+		"rotation": {{At: 0, Value: 0, Ease: "linear"}, {At: time.Second, Value: 45}},
+		"scale":    {{At: 0, Value: 1, Ease: "back-out"}, {At: time.Second, Value: 1.5}},
+		"x":        {{At: 0, Value: 0, Ease: "linear"}, {At: 2 * time.Second, Value: 300}},
+	}}
+	layer := LayerPlan{X: 501, Y: 801, Width: 100, Height: 60, Animation: spin}
+	left, top, w, h := transformCanvas(s, layer)
+	if left%2 != 0 || top%2 != 0 || w%2 != 0 || h%2 != 0 {
+		t.Errorf("canvas %d,%d %dx%d is off the chroma grid", left, top, w, h)
+	}
+	// Sample between frames as well: the canvas must hold every corner.
+	for ms := 0; ms <= 2500; ms += 5 {
+		at := time.Duration(ms) * time.Millisecond
+		n := at * 30 / time.Second // the frame perspective renders
+		ft := n * time.Second / 30
+		sc := spin.Value("scale", ft, 1)
+		sin, cos := math.Sincos(spin.Value("rotation", ft, 0) * math.Pi / 180)
+		cx, cy := 551+spin.Value("x", ft, 0), 831.0
+		for _, d := range [][2]float64{{-50, -30}, {50, -30}, {-50, 30}, {50, 30}} {
+			x, y := cx+sc*(d[0]*cos-d[1]*sin), cy+sc*(d[0]*sin+d[1]*cos)
+			if x < float64(left) || x > float64(left+w) || y < float64(top) || y > float64(top+h) {
+				t.Fatalf("corner (%.1f,%.1f) at %s outside canvas %d,%d %dx%d", x, y, ft, left, top, w, h)
+			}
+		}
+	}
+	if w > 600 || h > 300 {
+		t.Errorf("canvas %dx%d is far larger than the path", w, h)
+	}
+
+	// The rest box always fits, even outside the space; the path outside is cut.
+	offscreen := LayerPlan{X: -400, Y: 2000, Width: 100, Height: 100, Animation: spin}
+	left, top, w, h = transformCanvas(s, offscreen)
+	if left > -400-animationMargin || top > 2000-animationMargin || left+w < -300+animationMargin || top+h < 2100+animationMargin {
+		t.Errorf("canvas %d,%d %dx%d misses the rest box", left, top, w, h)
+	}
+}

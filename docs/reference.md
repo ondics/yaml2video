@@ -57,7 +57,7 @@ Besides `$schema` and `version`, every template requires:
 | Field | Purpose |
 | --- | --- |
 | `template_id`, `description` | Identity and human-readable purpose. |
-| `format` | `aspect_ratio`, `width`, `height`, and `fps`. Ratios: `9:16`, `1:1`, `16:9`, `4:5`. Optional `crf` (0–51, default 16) sets the final H.264 quality; lower is better and larger. |
+| `format` | `aspect_ratio`, `width`, `height`, and `fps`. Ratios: `9:16`, `1:1`, `16:9`, `4:5`. Optional `crf` (0–51, default 16) sets the final H.264 quality; lower is better and larger. Optional `preset` (x264 speed preset, `ultrafast` to `veryslow`, default `veryfast`) trades encode time for file size at that quality. |
 | `defaults` | Required `theme` and `timing`; optional `typography`, `media`, and `audio`. |
 | `composition` | Ordered `sections` array, with at least two entries. |
 | `layout` | Required `intro`, `slide`, and `outro` default layouts, even when optional content is absent, plus any number of named layouts. Each is classic, custom, or the name of another layout. See [layouts](layouts.md). |
@@ -235,6 +235,8 @@ Relative media paths always resolve from the video YAML's directory in the CLI, 
 Media paths are checked for readability and regular-file status during loading. Decodability is left to FFmpeg; these checks do not guarantee a supported media format.
 
 The CLI writes `output.mp4` next to the video YAML unless `-o` overrides it. Intermediate files go into `.yaml2video` beside the YAML unless `--work-dir` overrides it. Dimensions and frame rate come from the template; codecs and filter graphs are implementation details, not YAML fields.
+
+Scenes render as separate FFmpeg processes, several at once: one per CPU core, up to 4. Set `YAML2VIDEO_SCENE_JOBS` to change that number, for example `1` on a host with little memory, since each process holds its own frames.
 
 `-n` reports output settings, effective duration, scene start/end times, text/media bindings, effects, audio events, and generated FFmpeg commands without encoding. It does not verify media decoding or every FFmpeg capability; fonts are resolved (and downloaded if needed) because text layout depends on them. Actual text rendering requires an FFmpeg build with the `ass` filter.
 

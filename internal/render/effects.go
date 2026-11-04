@@ -147,18 +147,33 @@ func anchorXY(anchor string) ([2]float64, error) {
 	}
 }
 
-func applyMediaEffects(input *ffmpeg.Stream, plan *Plan, scene ScenePlan, layer LayerPlan) *ffmpeg.Stream {
-	for _, e := range layer.Effects {
+// animated reports whether a media effect changes over time.
+func (e EffectPlan) animated() bool {
+	return e.Type == "pan_zoom" || e.Type == "fade"
+}
+
+// applyMediaEffects applies effects to a stream that starts skip frames into
+// its owner's timeline.
+func applyMediaEffects(input *ffmpeg.Stream, plan *Plan, scene ScenePlan, layer LayerPlan, effects []EffectPlan, skip int) *ffmpeg.Stream {
+	for _, e := range effects {
 		switch e.Type {
 		case "pan_zoom":
 			from, _ := anchorXY(e.FromAnchor)
 			to, _ := anchorXY(e.ToAnchor)
 			frames := math.Max(1, scene.Duration.Seconds()*float64(plan.Video.FPS)-1)
-			progress := fmt.Sprintf("min(on/%g,1)", frames)
-			zoom := fmt.Sprintf("(%g+(%g-%g)*%s)", e.FromScale, e.ToScale, e.FromScale, progress)
-			x := fmt.Sprintf("(iw-iw/zoom)*(%g+(%g-%g)*%s)", from[0], to[0], from[0], progress)
-			y := fmt.Sprintf("(ih-ih/zoom)*(%g+(%g-%g)*%s)", from[1], to[1], from[1], progress)
-			input = input.Filter("zoompan", nil, ffmpeg.KwArgs{"z": zoom, "x": x, "y": y, "d": 1, "s": fmt.Sprintf("%dx%d", layer.Width, layer.Height), "fps": plan.Video.FPS})
+			// perspective maps the zoomed area (W/zoom×H/zoom at x,y) onto the
+			// frame with subpixel sampling; zoompan crops at whole pixels, so
+			// slow zooms and pans step and jitter.
+			progress := fmt.Sprintf("min(%s/%g,1)", perspectiveFrame(skip), frames)
+			zoom := fmt.Sprintf("max(%g+(%g-%g)*%s,1)", e.FromScale, e.ToScale, e.FromScale, progress)
+			w, h := fmt.Sprintf("(W/%s)", zoom), fmt.Sprintf("(H/%s)", zoom)
+			x := fmt.Sprintf("((W-%s)*(%g+(%g-%g)*%s))", w, from[0], to[0], from[0], progress)
+			y := fmt.Sprintf("((H-%s)*(%g+(%g-%g)*%s))", h, from[1], to[1], from[1], progress)
+			input = input.Filter("perspective", nil, ffmpeg.KwArgs{
+				"sense": "source", "eval": "frame", "interpolation": "cubic",
+				"x0": x, "y0": y, "x1": x + "+" + w, "y1": y,
+				"x2": x, "y2": y + "+" + h, "x3": x + "+" + w, "y3": y + "+" + h,
+			})
 		case "blur":
 			if e.Radius > 0 {
 				input = input.Filter("gblur", nil, ffmpeg.KwArgs{"sigma": e.Radius})
@@ -179,7 +194,8 @@ func applyMediaEffects(input *ffmpeg.Stream, plan *Plan, scene ScenePlan, layer 
 			}
 		case "vignette":
 			// vignette darkens pixels but cannot tint them; non-black tint is rejected in validation.
-			input = input.Filter("vignette", nil, ffmpeg.KwArgs{"angle": fmt.Sprintf("PI/2-%g*(PI/2-PI/5)", e.Opacity), "eval": "frame"})
+			// The angle is constant, so the vignette map is computed once (eval=init).
+			input = input.Filter("vignette", nil, ffmpeg.KwArgs{"angle": fmt.Sprintf("PI/2-%g*(PI/2-PI/5)", e.Opacity)})
 		case "fade":
 			input = input.Filter("format", ffmpeg.Args{"rgba"})
 			if e.FadeIn > 0 {

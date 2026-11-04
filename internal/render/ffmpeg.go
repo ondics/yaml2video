@@ -3,11 +3,15 @@ package render
 import (
 	"context"
 	"fmt"
+	"maps"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	ffmpeg "github.com/u2takey/ffmpeg-go"
@@ -15,8 +19,9 @@ import (
 
 const (
 	ffmpegFilterASS = "ass"
-	eofActionEndAll = "endall"
-	eofActionPass   = "pass"
+	// Overlays pass the main stream on when the overlaid one ends. ("endall"
+	// ends them together, but drops the last frame when both end at once.)
+	eofActionPass = "pass"
 )
 
 // Commands returns the exact FFmpeg argument lists that Render executes.
@@ -65,46 +70,142 @@ func (p *Plan) RenderWithProgress(ctx context.Context, callback func(Progress)) 
 	if err := p.measureAudio(ctx); err != nil {
 		return err
 	}
+	if err := p.writePieces(); err != nil {
+		return err
+	}
 
 	commands, err := p.Commands()
 	if err != nil {
 		return err
 	}
 
+	// Scenes, then transitions, run several at once; the last command
+	// assembles the output (or, unsegmented, composes and encodes it).
+	scenes := min(len(p.Scenes), len(commands))
+	var blends []float64
+	seg, segmented := p.segments()
+	if segmented {
+		for _, blend := range seg.blends {
+			if blend > 0 {
+				blends = append(blends, float64(blend)/float64(p.Video.FPS))
+			}
+		}
+	}
+	transitions := scenes + len(blends)
 	weights := make([]float64, len(commands))
 	for i := range weights {
-		if i < len(p.Scenes) {
+		switch {
+		case i < scenes:
 			weights[i] = p.Scenes[i].Duration.Seconds()
-		} else {
+		case i < transitions:
+			weights[i] = blends[i-scenes]
+		case segmented:
+			weights[i] = p.Duration.Seconds() / 20 // copies the video, encodes the audio
+		default:
 			weights[i] = p.Duration.Seconds()
 		}
 	}
 
 	progress := newRenderProgress(weights, callback)
-	for i, args := range commands {
+	if err := renderParallel(ctx, "scene", commands, 0, scenes, progress); err != nil {
+		return err
+	}
+	if err := renderParallel(ctx, "final", commands, scenes, transitions, progress); err != nil {
+		return err
+	}
+	for i := transitions; i < len(commands); i++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		stage := "scene"
-		if i == len(p.Scenes) {
-			stage = "final"
-		}
-
-		progress.report(stage, i, 0)
-		if err := runFFmpeg(ctx, args[1:], func(seconds float64) {
-			progress.report(stage, i, seconds)
+		progress.report("final", i, 0, false)
+		if err := runFFmpeg(ctx, commands[i][1:], func(seconds float64) {
+			progress.report("final", i, seconds, false)
 		}); err != nil {
-			return fmt.Errorf("render %s command %d: %w", stage, i+1, err)
+			return fmt.Errorf("render final command %d: %w", i+1, err)
 		}
-		progress.report(stage, i+1, 0)
+		progress.report("final", i, 0, true)
 	}
 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	progress.report("done", len(commands), 0)
+	progress.report("done", len(commands), 0, false)
 	return nil
+}
+
+// sceneJobs is how many scenes render at once: YAML2VIDEO_SCENE_JOBS, or one
+// per CPU core up to 4. Scenes are independent, and a single FFmpeg process
+// leaves cores idle (its filter graph runs on one thread, with only some
+// filters spreading work); each process holds its own frames in memory.
+func sceneJobs() int {
+	if jobs, err := strconv.Atoi(os.Getenv("YAML2VIDEO_SCENE_JOBS")); err == nil && jobs > 0 {
+		return jobs
+	}
+	return min(runtime.NumCPU(), 4)
+}
+
+// renderParallel runs commands [from, to), sceneJobs at a time, and reports
+// their progress on the calling goroutine. The first failure stops the rest.
+func renderParallel(ctx context.Context, stage string, commands [][]string, from, to int, progress *renderProgress) error {
+	if from >= to {
+		return ctx.Err()
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	type event struct {
+		command  int
+		seconds  float64
+		finished bool
+		err      error
+	}
+	events := make(chan event)
+	queue := make(chan int)
+	go func() {
+		defer close(queue)
+		for i := from; i < to; i++ {
+			select {
+			case queue <- i:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	var workers sync.WaitGroup
+	for range min(sceneJobs(), to-from) {
+		workers.Go(func() {
+			for i := range queue {
+				events <- event{command: i}
+				err := runFFmpeg(ctx, commands[i][1:], func(seconds float64) {
+					events <- event{command: i, seconds: seconds}
+				})
+				events <- event{command: i, finished: err == nil, err: err}
+			}
+		})
+	}
+	go func() {
+		workers.Wait()
+		close(events)
+	}()
+
+	var failure error
+	for e := range events {
+		if e.err != nil {
+			if failure == nil {
+				failure = fmt.Errorf("render %s command %d: %w", stage, e.command+1, e.err)
+				cancel()
+			}
+			continue
+		}
+		if failure == nil {
+			progress.report(stage, e.command, e.seconds, e.finished)
+		}
+	}
+	if failure != nil {
+		return failure
+	}
+	return ctx.Err()
 }
 
 func (p *Plan) createWorkDirectories() error {
@@ -117,28 +218,259 @@ func (p *Plan) createWorkDirectories() error {
 	return nil
 }
 
+// streams returns the render's commands: one per scene, then (for a
+// segmented render) one per blended transition, then the one that assembles
+// the output.
 func (p *Plan) streams() ([]*ffmpeg.Stream, error) {
 	if err := p.validateRenderPlan(); err != nil {
 		return nil, err
 	}
 	streams := make([]*ffmpeg.Stream, 0, len(p.Scenes)+1)
-
-	for _, scene := range p.Scenes {
-		streams = append(streams, buildScene(p, scene))
-	}
 	if len(p.Scenes) == 0 {
 		return streams, nil
 	}
 
-	final, err := p.buildFinal()
-	if err != nil {
-		return nil, err
+	segments, ok := p.segments()
+	if !ok {
+		for _, scene := range p.Scenes {
+			streams = append(streams, buildScene(p, scene, 0, nil))
+		}
+		final, err := p.buildFinal()
+		if err != nil {
+			return nil, err
+		}
+		return append(streams, final), nil
 	}
 
-	return append(streams, final), nil
+	for i, scene := range p.Scenes {
+		streams = append(streams, buildScene(p, scene, i, &segments))
+	}
+	for i, blend := range segments.blends {
+		if blend > 0 {
+			streams = append(streams, p.buildTransition(i, segments))
+		}
+	}
+	return append(streams, p.buildAssembly(segments)), nil
 }
 
-func buildScene(plan *Plan, scene ScenePlan) *ffmpeg.Stream {
+// A segmented render encodes the output in pieces and joins them without
+// encoding again: each scene command encodes the scene's own frames, each
+// transition command blends the frames two scenes share, and the assembly
+// concatenates the pieces and adds the audio. Before, every scene was saved
+// losslessly and the whole video decoded, blended, and encoded in one more
+// pass.
+//
+// segments places the scenes on the output's frames: scene i's first frame is
+// output frame starts[i], and its last blends[i] frames blend into scene i+1
+// (0 for a cut). Scene i's own frames are output frames
+// [starts[i]+blends[i-1], starts[i+1]).
+type segments struct {
+	starts, blends []int
+	total          int
+}
+
+// segments returns where the scenes lie on the output's frames, or false if a
+// scene is too short for the blends at its ends; the render then composes the
+// output in one pass (buildFinal).
+func (p *Plan) segments() (segments, bool) {
+	fps := float64(p.Video.FPS)
+	n := len(p.Scenes)
+	seg := segments{starts: make([]int, n), blends: make([]int, n)}
+	start := time.Duration(0)
+	for i, scene := range p.Scenes {
+		seg.starts[i] = int(math.Round(start.Seconds() * fps))
+		start += scene.Duration
+		if t := boundaryFor(p.Transitions, i); i < n-1 && t != nil && t.xfade() != "" {
+			seg.blends[i] = int(math.Round(t.Duration.Seconds() * fps))
+			if seg.blends[i] < 1 {
+				return seg, false
+			}
+			start -= t.Duration
+		}
+	}
+	seg.total = int(math.Round(start.Seconds() * fps))
+	for i := range p.Scenes {
+		if seg.head(i) > seg.end(i)-seg.starts[i] {
+			return seg, false
+		}
+	}
+	return seg, true
+}
+
+// head is how many of scene i's first frames blend with scene i-1.
+func (seg segments) head(i int) int {
+	if i == 0 {
+		return 0
+	}
+	return seg.blends[i-1]
+}
+
+// end is the output frame after scene i's own frames: where scene i+1 starts.
+func (seg segments) end(i int) int {
+	if i+1 < len(seg.starts) {
+		return seg.starts[i+1]
+	}
+	return seg.total
+}
+
+// piece is an encoded piece of the output and its length in frames.
+type piece struct {
+	file   string
+	frames int
+}
+
+// pieces returns the encoded pieces of the output, in order.
+func (p *Plan) pieces(seg segments) []piece {
+	var pieces []piece
+	for i, scene := range p.Scenes {
+		if body := seg.end(i) - seg.starts[i] - seg.head(i); body > 0 {
+			pieces = append(pieces, piece{scenePart(scene, "body"), body})
+		}
+		if seg.blends[i] > 0 {
+			pieces = append(pieces, piece{p.transitionFile(i), seg.blends[i]})
+		}
+	}
+	return pieces
+}
+
+// scenePart is the file of part of a scene: its blended head or tail, kept
+// losslessly for the transitions, or its encoded body.
+func scenePart(scene ScenePlan, part string) string {
+	base := strings.TrimSuffix(scene.Output, filepath.Ext(scene.Output)) + "-" + part
+	if part == "body" {
+		return base + ".ts"
+	}
+	return base + ".mkv"
+}
+
+func (p *Plan) transitionFile(i int) string {
+	return filepath.Join(p.WorkDir, "scenes", fmt.Sprintf("transition-%04d.ts", i))
+}
+
+func (p *Plan) piecesList() string {
+	return filepath.Join(p.WorkDir, "scenes", "pieces.txt")
+}
+
+// writePieces writes the concat list of a segmented render's pieces. Each
+// piece's exact duration is given, so joining them does not depend on how the
+// concat demuxer estimates an MPEG-TS file's length from its timestamps.
+func (p *Plan) writePieces() error {
+	seg, ok := p.segments()
+	if !ok || len(p.Scenes) == 0 {
+		return nil
+	}
+	var list strings.Builder
+	for _, piece := range p.pieces(seg) {
+		abs, err := filepath.Abs(piece.file)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&list, "file '%s'\nduration %s\n", strings.ReplaceAll(abs, "'", `'\''`), num6(float64(piece.frames)/float64(p.Video.FPS)))
+	}
+	return os.WriteFile(p.piecesList(), []byte(list.String()), 0o644)
+}
+
+// finalVideoArgs are the output's video encoding settings.
+func (p *Plan) finalVideoArgs() ffmpeg.KwArgs {
+	// Graphics-heavy frames (flat color, fine text) band and smear at x264's
+	// default quality; a low CRF and adaptive quantization keep them clean.
+	crf := p.Video.CRF
+	if crf == 0 {
+		crf = defaultCRF
+	}
+	preset := p.Video.Preset
+	if preset == "" {
+		preset = defaultPreset
+	}
+	return ffmpeg.KwArgs{
+		"vcodec":      "libx264",
+		"crf":         crf,
+		"preset":      preset,
+		"x264-params": "aq-mode=3",
+		"pix_fmt":     "yuv420p",
+	}
+}
+
+// losslessArgs encode the frames transitions blend. x264's lossless mode
+// encodes and decodes in about half the CPU time of ffv1 at the same size.
+var losslessArgs = ffmpeg.KwArgs{"an": "", "vcodec": "libx264", "qp": 0, "preset": "ultrafast", "pix_fmt": "yuv420p"}
+
+// videoRange converts frames to limited-range yuv420p and tags them with the
+// BT.601 matrix that converted their RGB sources (images, colors, subtitles).
+// Filters tag frames inconsistently (full range, or the RGB "gbr" matrix
+// after an RGB step), and pieces joined without encoding again must agree.
+func videoRange(s *ffmpeg.Stream) *ffmpeg.Stream {
+	return s.Filter("scale", nil, ffmpeg.KwArgs{"out_range": "tv"}).
+		Filter("format", ffmpeg.Args{"yuv420p"}).
+		Filter("setparams", nil, ffmpeg.KwArgs{"range": "tv", "colorspace": "smpte170m"})
+}
+
+// frames selects frames [from, to) of a stream and numbers them from first
+// on the output's timeline.
+func frames(s *ffmpeg.Stream, fps, from, to, first int) *ffmpeg.Stream {
+	return s.Filter("trim", nil, ffmpeg.KwArgs{"start_frame": from, "end_frame": to}).
+		Filter("setpts", ffmpeg.Args{fmt.Sprintf("(N+%d)/%d/TB", first, fps)})
+}
+
+// encodePiece encodes output frames [first, first+count) as a piece, after
+// what lies on the output's own timeline.
+func (p *Plan) encodePiece(s *ffmpeg.Stream, first, count int, file string) *ffmpeg.Stream {
+	args := p.finalVideoArgs()
+	args["an"] = ""
+	return videoRange(p.timeline(s, first, count)).
+		Filter("setpts", ffmpeg.Args{fmt.Sprintf("N/%d/TB", p.Video.FPS)}).
+		Output(file, args)
+}
+
+// timeline applies what lies on the output's own timeline (the transitions'
+// effect layers, then the video's tracks) to output frames [first,
+// first+count) that carry the output's timestamps.
+func (p *Plan) timeline(s *ffmpeg.Stream, first, count int) *ffmpeg.Stream {
+	space := frameSpace(p.Video)
+	space.first, space.frames = first, count
+	ordinal := 0
+	for _, transition := range p.Transitions {
+		s = composite(s, p, []TrackPlan{{Clips: transition.Effects}}, space, false, &ordinal)
+	}
+	return composite(s, p, p.Tracks, space, false, &ordinal)
+}
+
+// buildTransition blends the frames scenes i and i+1 share.
+func (p *Plan) buildTransition(i int, seg segments) *ffmpeg.Stream {
+	transition := boundaryFor(p.Transitions, i)
+	fps, count, first := p.Video.FPS, seg.blends[i], seg.starts[i+1]
+	args := ffmpeg.KwArgs{
+		"transition": transition.xfade(),
+		"duration":   num6(float64(count) / float64(fps)),
+		"offset":     0,
+	}
+	if transition.Expr != "" {
+		args["expr"] = transition.Expr
+	}
+	tail := ffmpeg.Input(scenePart(p.Scenes[i], "tail"))
+	head := ffmpeg.Input(scenePart(p.Scenes[i+1], "head"))
+	blend := frames(ffmpeg.Filter([]*ffmpeg.Stream{tail, head}, "xfade", nil, args), fps, 0, count, first)
+	return p.encodePiece(blend, first, count, p.transitionFile(i)).OverWriteOutput()
+}
+
+// buildAssembly joins the encoded pieces and adds the audio, cut to the
+// video's length. (-shortest would cut the copied video at the audio's last
+// packet, a few frames early.)
+func (p *Plan) buildAssembly(seg segments) *ffmpeg.Stream {
+	streams := []*ffmpeg.Stream{ffmpeg.Input(p.piecesList(), ffmpeg.KwArgs{"f": "concat", "safe": 0}).Video()}
+	if audio := p.buildAudio(); audio != nil {
+		streams = append(streams, audio)
+	}
+	return ffmpeg.Output(streams, p.Output, ffmpeg.KwArgs{
+		"vcodec":   "copy",
+		"movflags": "+faststart",
+		"t":        num6(float64(seg.total) / float64(p.Video.FPS)),
+	}).OverWriteOutput()
+}
+
+// buildScene renders a scene: into one lossless file (seg nil), or into the
+// pieces of a segmented render.
+func buildScene(plan *Plan, scene ScenePlan, index int, seg *segments) *ffmpeg.Stream {
 	base := sceneBackgroundStream(plan, scene)
 
 	for _, layer := range scene.Layers {
@@ -149,14 +481,41 @@ func buildScene(plan *Plan, scene ScenePlan) *ffmpeg.Stream {
 	}
 	base = applyTracks(base, plan, scene.Tracks)
 
-	return base.
-		Output(scene.Output, ffmpeg.KwArgs{
-			"t":       ffTime(scene.Duration),
-			"an":      "",
-			"vcodec":  "ffv1",
-			"pix_fmt": "yuv420p",
-		}).
-		OverWriteOutput()
+	if seg == nil {
+		args := maps.Clone(losslessArgs)
+		args["t"] = ffTime(scene.Duration)
+		return base.Output(scene.Output, args).OverWriteOutput()
+	}
+
+	fps, first := plan.Video.FPS, seg.starts[index]
+	head, body, tail := seg.head(index), seg.end(index)-first, seg.blends[index]
+	// Rounding the scene's ends to frames may need up to two frames more.
+	base = videoRange(base).Filter("tpad", nil, ffmpeg.KwArgs{"stop_mode": "clone", "stop": 2})
+	var parts []func(*ffmpeg.Stream) *ffmpeg.Stream
+	if head > 0 {
+		parts = append(parts, func(s *ffmpeg.Stream) *ffmpeg.Stream {
+			return frames(s, fps, 0, head, 0).Output(scenePart(scene, "head"), losslessArgs)
+		})
+	}
+	if body > head {
+		parts = append(parts, func(s *ffmpeg.Stream) *ffmpeg.Stream {
+			return plan.encodePiece(frames(s, fps, head, body, first+head), first+head, body-head, scenePart(scene, "body"))
+		})
+	}
+	if tail > 0 {
+		parts = append(parts, func(s *ffmpeg.Stream) *ffmpeg.Stream {
+			return frames(s, fps, body, body+tail, 0).Output(scenePart(scene, "tail"), losslessArgs)
+		})
+	}
+	if len(parts) == 1 {
+		return parts[0](base).OverWriteOutput()
+	}
+	split := base.Split()
+	outputs := make([]*ffmpeg.Stream, len(parts))
+	for i, part := range parts {
+		outputs[i] = part(split.Get(strconv.Itoa(i)))
+	}
+	return ffmpeg.MergeOutputs(outputs...).OverWriteOutput()
 }
 
 func sceneBackgroundStream(plan *Plan, scene ScenePlan) *ffmpeg.Stream {
@@ -181,18 +540,18 @@ func applyVisualLayer(base *ffmpeg.Stream, plan *Plan, scene ScenePlan, layer La
 			// length keeps ffmpeg-go from merging the two input chains.
 			source.Duration += time.Duration(layer.ShowOnly.Start.Microseconds()%997+1) * time.Microsecond
 		}
-		input := mediaLayerStream(plan, source, layer)
+		input := mediaLayerStream(plan, source, layer, 0)
 		input, x, y := animateMedia(input, frameSpace(plan.Video), layer, 0)
 		args := ffmpeg.KwArgs{"x": x, "y": y}
 		if enable := layer.enableExpr(); enable != "" {
 			args["enable"] = enable
 		}
-		return base.Overlay(input, mediaEOFAction(layer), args)
+		return base.Overlay(input, eofActionPass, args)
 	case "rectangle":
 		return drawRectangle(base, layer)
 	case "circle":
 		circle := circleStream(plan, layer, scene.Duration)
-		return base.Overlay(circle, eofActionEndAll, ffmpeg.KwArgs{"x": layer.X, "y": layer.Y})
+		return base.Overlay(circle, eofActionPass, ffmpeg.KwArgs{"x": layer.X, "y": layer.Y})
 	case "text":
 		if layer.ShowOnly != nil || len(layer.HideDuring) > 0 {
 			// Modified elements show their panels only while they are visible.
@@ -204,20 +563,54 @@ func applyVisualLayer(base *ffmpeg.Stream, plan *Plan, scene ScenePlan, layer La
 	}
 }
 
-func mediaLayerStream(plan *Plan, scene ScenePlan, layer LayerPlan) *ffmpeg.Stream {
+// mediaLayerStream is a media layer's prepared stream, without its first
+// skip frames (it starts that far into its owner's timeline).
+func mediaLayerStream(plan *Plan, scene ScenePlan, layer LayerPlan, skip int) *ffmpeg.Stream {
 	input := mediaInput(plan, scene, layer)
-	input = fitLayerStream(input, layer)
-	input = applyMediaEffects(input, plan, scene, layer)
+	effects := layer.Effects
+	if layer.Kind != "image" {
+		input = skipFrames(fitLayerStream(input, layer), skip)
+		input = applyMediaEffects(input, plan, scene, layer, effects, skip)
+		return finishMediaLayer(input, layer)
+	}
 
+	// A still image: fit it and apply what doesn't change over time to its
+	// first frame only, then repeat that frame. Scaling and filtering every
+	// identical frame again costs as much as the rest of a scene. (The trim
+	// follows the fit: ffmpeg-go merges identical nodes, and layers showing
+	// the same image would share it.)
+	input = fitLayerStream(input, layer).Filter("trim", nil, ffmpeg.KwArgs{"end_frame": 1})
+	static := 0
+	for static < len(effects) && !effects[static].animated() {
+		static++
+	}
+	input = applyMediaEffects(input, plan, scene, layer, effects[:static], 0)
+	animated := static < len(effects) || layer.Animation.Has("width", "height")
+	if !animated {
+		input = finishMediaLayer(input, layer)
+	}
+	input = input.Filter("loop", nil, ffmpeg.KwArgs{"loop": -1, "size": 1, "start": 0}).
+		Filter("settb", ffmpeg.Args{"AVTB"}).
+		Filter("setpts", ffmpeg.Args{fmt.Sprintf("N/%d/TB", plan.Video.FPS)}).
+		Filter("trim", nil, ffmpeg.KwArgs{"duration": ffTime(scene.Duration)})
+	input = skipFrames(input, skip)
+	if !animated {
+		return input
+	}
+	input = applyMediaEffects(input, plan, scene, layer, effects[static:], skip)
+	return finishMediaLayer(input, layer)
+}
+
+// finishMediaLayer applies a media layer's opacity and shape mask.
+func finishMediaLayer(input *ffmpeg.Stream, layer LayerPlan) *ffmpeg.Stream {
 	if layer.Opacity != 1 {
 		input = input.
 			Filter("format", ffmpeg.Args{"rgba"}).
 			ColorChannelMixer(ffmpeg.KwArgs{"aa": layer.Opacity})
 	}
 	if masked(layer) {
-		input = maskAlpha(input, shapeMask(layer))
+		input = maskShape(input, layer)
 	}
-
 	return input
 }
 
@@ -304,14 +697,6 @@ func containPadding(anchor string) (string, string) {
 	return x, y
 }
 
-func mediaEOFAction(layer LayerPlan) string {
-	if layer.Kind == "video" {
-		return eofActionPass
-	}
-
-	return eofActionEndAll
-}
-
 func drawTextBackgrounds(base *ffmpeg.Stream, layer LayerPlan) *ffmpeg.Stream {
 	backgroundPlan := layer.Background
 	glassBlur := 0.0
@@ -334,7 +719,7 @@ func drawTextBackgrounds(base *ffmpeg.Stream, layer LayerPlan) *ffmpeg.Stream {
 		x, y := layer.X-background.PaddingX, layer.Y-background.PaddingY
 		width, height := layer.Width+2*background.PaddingX, layer.Height+2*background.PaddingY
 		if glassBlur > 0 {
-			base = blurPanel(base, x, y, width, height, glassBlur)
+			base = blurPanel(base, x, y, width, height, glassBlur, "", false)
 		}
 		base = drawTextBackground(base, x, y, width, height, background, layer.Opacity)
 	}
@@ -415,21 +800,11 @@ func (p *Plan) buildFinal() (*ffmpeg.Stream, error) {
 		streams = append(streams, audio)
 	}
 
-	// Graphics-heavy frames (flat color, fine text) band and smear at x264's
-	// default quality; a low CRF and adaptive quantization keep them clean.
-	crf := p.Video.CRF
-	if crf == 0 {
-		crf = defaultCRF
-	}
-	return ffmpeg.Output(streams, p.Output, ffmpeg.KwArgs{
-		"vcodec":      "libx264",
-		"crf":         crf,
-		"preset":      "slow",
-		"x264-params": "aq-mode=3",
-		"pix_fmt":     "yuv420p",
-		"movflags":    "+faststart",
-		"shortest":    "",
-	}).OverWriteOutput(), nil
+	streams[0] = videoRange(streams[0])
+	args := p.finalVideoArgs()
+	args["movflags"] = "+faststart"
+	args["shortest"] = ""
+	return ffmpeg.Output(streams, p.Output, args).OverWriteOutput(), nil
 }
 
 func (p *Plan) xfadeOffset(sceneIndex int, transition *BoundaryTransition) time.Duration {
@@ -650,14 +1025,19 @@ func circleStream(plan *Plan, layer LayerPlan, duration time.Duration) *ffmpeg.S
 		int(alpha*255+0.5),
 	)
 
+	// geq is slow per pixel: draw the circle once and repeat that frame.
 	return ffmpeg.Input(input, ffmpeg.KwArgs{"f": "lavfi"}).
 		Filter("format", ffmpeg.Args{"rgba"}).
+		Filter("trim", nil, ffmpeg.KwArgs{"end_frame": 1}).
 		Filter("geq", nil, ffmpeg.KwArgs{
 			"r": "r(X,Y)",
 			"g": "g(X,Y)",
 			"b": "b(X,Y)",
 			"a": alphaExpression,
-		})
+		}).
+		Filter("loop", nil, ffmpeg.KwArgs{"loop": -1, "size": 1, "start": 0}).
+		Filter("setpts", ffmpeg.Args{fmt.Sprintf("N/%d/TB", plan.Video.FPS)}).
+		Filter("trim", nil, ffmpeg.KwArgs{"duration": ffTime(duration)})
 }
 
 func (p *Plan) usesASS() bool {
@@ -688,7 +1068,7 @@ func (p *Plan) writeASS() error {
 		// A folder's text is drawn on its canvas, in the canvas's coordinates.
 		video, s := p.Video, frameSpace(p.Video)
 		if track.Canvas != nil {
-			s = space{*track.Canvas, p.Video.FPS}
+			s = space{Rect: *track.Canvas, fps: p.Video.FPS}
 			video.Width, video.Height = track.Canvas.W, track.Canvas.H
 		}
 		for run, clips := range textRuns(track.Clips) {
