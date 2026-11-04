@@ -11,12 +11,29 @@ import (
 )
 
 func renderCLI(ctx context.Context, plan *render.Plan, progressOutput, output io.Writer) error {
-	fmt.Fprintf(progressOutput, "Rendering %d scenes (%dx%d at %d fps, %s)\n", len(plan.Scenes), plan.Video.Width, plan.Video.Height, plan.Video.FPS, plan.Duration)
+	jobs, err := render.SceneJobs()
+	if err != nil {
+		fmt.Fprintf(progressOutput, "[Warning] %v\n", err)
+	}
+	fmt.Fprintf(progressOutput, "Rendering %d scenes (%dx%d at %d fps, %s), %s\n", len(plan.Scenes), plan.Video.Width, plan.Video.Height, plan.Video.FPS, plan.Duration,
+		parallelism(jobs, len(plan.Scenes), err == nil && os.Getenv(render.SceneJobsEnv) != ""))
 	if err := plan.RenderWithProgress(ctx, cliProgress(progressOutput, len(plan.Scenes))); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintf(output, "Output: %s\n", relativeOutputPath(plan.Output))
+	_, err = fmt.Fprintf(output, "Output: %s\n", relativeOutputPath(plan.Output))
 	return err
+}
+
+// parallelism describes how many scenes render at once and why.
+func parallelism(jobs, scenes int, fromEnv bool) string {
+	source := fmt.Sprintf("default: one per CPU core, up to 4; set %s to change", render.SceneJobsEnv)
+	if fromEnv {
+		source = fmt.Sprintf("%s=%d", render.SceneJobsEnv, jobs)
+	}
+	if scenes > 0 && jobs > scenes {
+		return fmt.Sprintf("%d at a time, one per scene (%s)", scenes, source)
+	}
+	return fmt.Sprintf("%d at a time (%s)", jobs, source)
 }
 
 // cliProgress prints render progress. Scene commands come first, so the

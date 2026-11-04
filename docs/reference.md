@@ -236,7 +236,7 @@ Media paths are checked for readability and regular-file status during loading. 
 
 The CLI writes `output.mp4` next to the video YAML unless `-o` overrides it. Intermediate files go into `.yaml2video` beside the YAML unless `--work-dir` overrides it. Dimensions and frame rate come from the template; codecs and filter graphs are implementation details, not YAML fields.
 
-Scenes render as separate FFmpeg processes, several at once: one per CPU core, up to 4. Set `YAML2VIDEO_SCENE_JOBS` to change that number, for example `1` on a host with little memory, since each process holds its own frames.
+Scenes render as separate FFmpeg processes, several at once: one per CPU core, up to 4. Each process already uses several threads, so more jobs than CPU cores do not render faster. Set `YAML2VIDEO_SCENE_JOBS` to change that number, for example `1` on a host with little memory, since each process holds its own frames. The CLI prints the number in use when a render starts, and the server logs it at startup; a value that is not a positive whole number is reported and the default applies. With Docker Compose (and the Makefile), the variable is passed from the host's environment.
 
 `-n` reports output settings, effective duration, scene start/end times, text/media bindings, effects, audio events, and generated FFmpeg commands without encoding. It does not verify media decoding or every FFmpeg capability; fonts are resolved (and downloaded if needed) because text layout depends on them. Actual text rendering requires an FFmpeg build with the `ass` filter.
 

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ondics/yaml2video/internal/render"
 	"github.com/ondics/yaml2video/internal/server/controller"
 )
 
@@ -52,7 +53,11 @@ func Serve() error {
 		}
 	}()
 
-	log.Printf("HTTP server listening on %s", server.Addr)
+	jobs, err := render.SceneJobs()
+	if err != nil {
+		log.Printf("warning: %v", err)
+	}
+	log.Printf("HTTP server listening on %s; each render runs up to %d scenes at a time (%s)", server.Addr, jobs, render.SceneJobsEnv)
 	err = server.ListenAndServe()
 	stop()
 	<-shutdownDone

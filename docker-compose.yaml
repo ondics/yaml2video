@@ -6,6 +6,8 @@ services:
         working_dir: /data
         environment:
             YAML2VIDEO_DATA_DIR: /var/lib/yaml2video
+            # Scenes rendered at once (default: one per CPU core, up to 4).
+            YAML2VIDEO_SCENE_JOBS: ${YAML2VIDEO_SCENE_JOBS:-}
         volumes:
             # - yaml2video-data:/var/lib/yaml2video
             - "${MOUNT_DIR:-.}:/data"

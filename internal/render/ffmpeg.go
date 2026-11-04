@@ -67,9 +67,6 @@ func (p *Plan) RenderWithProgress(ctx context.Context, callback func(Progress)) 
 	if err := p.writeFonts(); err != nil {
 		return err
 	}
-	if err := p.measureAudio(ctx); err != nil {
-		return err
-	}
 	if err := p.writePieces(); err != nil {
 		return err
 	}
@@ -78,6 +75,24 @@ func (p *Plan) RenderWithProgress(ctx context.Context, callback func(Progress)) 
 	if err != nil {
 		return err
 	}
+
+	// The loudness analysis only feeds the audio of the last command, so it
+	// runs while the scenes render. It sets the plan's gains: the plan is
+	// not read again until it ends, and it always ends before this returns.
+	measureCtx, cancelMeasure := context.WithCancel(ctx)
+	measured := make(chan error, 1)
+	go func() { measured <- p.measureAudio(measureCtx) }()
+	waited := false
+	waitMeasure := func() error {
+		waited = true
+		return <-measured
+	}
+	defer func() {
+		cancelMeasure()
+		if !waited {
+			<-measured
+		}
+	}()
 
 	// Scenes, then transitions, run several at once; the last command
 	// assembles the output (or, unsegmented, composes and encodes it).
@@ -113,6 +128,13 @@ func (p *Plan) RenderWithProgress(ctx context.Context, callback func(Progress)) 
 	if err := renderParallel(ctx, "final", commands, scenes, transitions, progress); err != nil {
 		return err
 	}
+	if err := waitMeasure(); err != nil {
+		return err
+	}
+	// The last command again, with the measured gains.
+	if commands, err = p.Commands(); err != nil {
+		return err
+	}
 	for i := transitions; i < len(commands); i++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -134,18 +156,34 @@ func (p *Plan) RenderWithProgress(ctx context.Context, callback func(Progress)) 
 	return nil
 }
 
-// sceneJobs is how many scenes render at once: YAML2VIDEO_SCENE_JOBS, or one
-// per CPU core up to 4. Scenes are independent, and a single FFmpeg process
-// leaves cores idle (its filter graph runs on one thread, with only some
-// filters spreading work); each process holds its own frames in memory.
-func sceneJobs() int {
-	if jobs, err := strconv.Atoi(os.Getenv("YAML2VIDEO_SCENE_JOBS")); err == nil && jobs > 0 {
-		return jobs
+// SceneJobsEnv sets how many FFmpeg processes render scenes (and then
+// transitions) at once.
+const SceneJobsEnv = "YAML2VIDEO_SCENE_JOBS"
+
+// SceneJobs is how many scenes render at once: SceneJobsEnv, or one per CPU
+// core up to 4 (DefaultSceneJobs). Scenes are independent, and a single
+// FFmpeg process leaves cores idle (its filter graph runs on one thread, with
+// only some filters spreading work); each process holds its own frames in
+// memory. A value that is not a positive whole number is an error, and the
+// default applies.
+func SceneJobs() (int, error) {
+	value := strings.TrimSpace(os.Getenv(SceneJobsEnv))
+	if value == "" {
+		return DefaultSceneJobs(), nil
 	}
+	jobs, err := strconv.Atoi(value)
+	if err != nil || jobs < 1 {
+		return DefaultSceneJobs(), fmt.Errorf("%s=%q is not a positive whole number; using %d", SceneJobsEnv, value, DefaultSceneJobs())
+	}
+	return jobs, nil
+}
+
+// DefaultSceneJobs is one scene job per CPU core, up to 4.
+func DefaultSceneJobs() int {
 	return min(runtime.NumCPU(), 4)
 }
 
-// renderParallel runs commands [from, to), sceneJobs at a time, and reports
+// renderParallel runs commands [from, to), SceneJobs at a time, and reports
 // their progress on the calling goroutine. The first failure stops the rest.
 func renderParallel(ctx context.Context, stage string, commands [][]string, from, to int, progress *renderProgress) error {
 	if from >= to {
@@ -173,7 +211,8 @@ func renderParallel(ctx context.Context, stage string, commands [][]string, from
 		}
 	}()
 	var workers sync.WaitGroup
-	for range min(sceneJobs(), to-from) {
+	jobs, _ := SceneJobs()
+	for range min(jobs, to-from) {
 		workers.Go(func() {
 			for i := range queue {
 				events <- event{command: i}

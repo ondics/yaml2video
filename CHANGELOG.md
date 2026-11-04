@@ -16,7 +16,8 @@ All notable changes to the project are documented here.
   - The frames transitions blend are kept as lossless H.264 (`-qp 0`) instead of FFV1: the same pixels, written and read in about half the time.
   - Effect clips with RGB-only adjustments (`glow`, `rgb_split`, sepia/warm/cool color filters) only process the frames of their window; before, every frame of the scene or video was converted to RGB and back.
   - Constant vignettes are computed once (`eval=init`).
-  - Scenes render in parallel, one FFmpeg process per CPU core up to 4 (`YAML2VIDEO_SCENE_JOBS` overrides).
+  - The loudness analysis of music and master runs while the scenes render, not before them.
+  - Scenes render in parallel, one FFmpeg process per CPU core up to 4 (`YAML2VIDEO_SCENE_JOBS` overrides, also through Docker Compose). The CLI prints how many run at once and why, the server logs it at startup, and an invalid value is reported.
 - The final encode uses x264's `veryfast` preset (was `slow`), about twice as fast at the same CRF with no visible difference (SSIM 0.998 against `slow` on the examples). Template `format.preset` selects another preset.
 
 ### Fixed
