@@ -29,6 +29,9 @@ func testController(t *testing.T) *Controller {
 	c.render = func(_ context.Context, p *render.Plan, _ func(render.Progress)) error {
 		return os.WriteFile(p.Output, []byte(testOutput), 0o600)
 	}
+	c.preview = func(_ context.Context, _, output string) error {
+		return os.WriteFile(output, []byte("fake preview"), 0o600)
+	}
 	return c
 }
 

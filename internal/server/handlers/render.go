@@ -129,6 +129,7 @@ func (h *Handler) serveRender(w http.ResponseWriter, r *http.Request, id string,
 			"id":       id,
 			"url":      renderURL(id),
 			"download": downloadURL(id),
+			"preview":  previewURL(id),
 		})
 	})
 }

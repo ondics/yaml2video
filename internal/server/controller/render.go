@@ -112,9 +112,13 @@ func (c *Controller) reserveRender(id string) (*RenderJob, error) {
 	}, nil
 }
 
-// Run renders the video and persists its completed state before returning.
+// Run renders the video and preview and persists their completed state before returning.
 func (j *RenderJob) Run(ctx context.Context, emit func(render.Progress)) error {
 	if err := j.controller.render(ctx, j.plan, emit); err != nil {
+		return err
+	}
+
+	if err := j.controller.preview(ctx, j.plan.Output, filepath.Join(j.dir, "preview.png")); err != nil {
 		return err
 	}
 
