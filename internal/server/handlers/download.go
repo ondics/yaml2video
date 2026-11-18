@@ -37,6 +37,19 @@ func (h *Handler) DownloadRender(w http.ResponseWriter, r *http.Request) {
 	artifact.MarkFreeable()
 }
 
+func (h *Handler) PreviewRender(w http.ResponseWriter, r *http.Request) {
+	artifact, err := h.Controller.OpenPreview(r.PathValue("id"))
+	if err != nil {
+		api.JSON(w, http.StatusNotFound, api.Map{"error": "preview not found"})
+		return
+	}
+	defer artifact.Close()
+
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeContent(w, r, "preview.png", artifact.Info.ModTime(), artifact.File)
+}
+
 type DownloadWriter struct {
 	http.ResponseWriter
 	status int
@@ -74,4 +87,8 @@ func renderURL(id string) string {
 
 func downloadURL(id string) string {
 	return renderURL(id) + "/download"
+}
+
+func previewURL(id string) string {
+	return renderURL(id) + "/preview"
 }

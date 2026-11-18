@@ -91,6 +91,14 @@ func (c *Controller) GetRender(id string) (*JobMetadata, error) {
 }
 
 func (c *Controller) OpenOutput(id string) (*OutputArtifact, error) {
+	return c.openArtifact(id, "output.mp4")
+}
+
+func (c *Controller) OpenPreview(id string) (*OutputArtifact, error) {
+	return c.openArtifact(id, "preview.png")
+}
+
+func (c *Controller) openArtifact(id, filename string) (*OutputArtifact, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -100,7 +108,7 @@ func (c *Controller) OpenOutput(id string) (*OutputArtifact, error) {
 		return nil, os.ErrNotExist
 	}
 
-	file, err := os.Open(filepath.Join(dir, "output.mp4"))
+	file, err := os.Open(filepath.Join(dir, filename))
 	if err != nil {
 		return nil, err
 	}

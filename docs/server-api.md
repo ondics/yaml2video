@@ -92,7 +92,7 @@ All fields are required. `id` must be valid UTF-8, at most 512 bytes, and contai
 | SSE event | JSON data |
 | --- | --- |
 | `progress` | `id`, `stage`, `percent` (0–100), plus optional render details |
-| `complete` | `id`, `download` pointing to `/renders/{id}/download`, `url` pointing to `/renders/{id}` |
+| `complete` | `id`, `download` pointing to `/renders/{id}/download`, `url` pointing to `/renders/{id}`, `preview` pointing to `/renders/{id}/preview` |
 | `error` | `id`, `error` describing the failure |
 
 ```text
@@ -100,7 +100,7 @@ event: progress
 data: {"id":"demo-001","stage":"starting","percent":0}
 
 event: complete
-data: {"id":"demo-001","url":"/renders/demo-001","download":"/renders/demo-001/download"}
+data: {"id":"demo-001","url":"/renders/demo-001","download":"/renders/demo-001/download","preview":"/renders/demo-001/preview"}
 
 ```
 
@@ -158,6 +158,19 @@ Download the completed MP4 using the URL from the `complete` event.
 curl --fail --output demo-001.mp4 http://localhost:8080/renders/demo-001/download
 ```
 
+## GET /renders/{id}/preview
+
+Fetch a full-resolution PNG of the completed video's first frame using the `preview` URL from the `complete` event. The preview is generated before completion is reported; generation failures produce an SSE `error` event instead.
+
+- `200 OK`: `image/png`, suitable for displaying inline.
+- HEAD and range requests are supported; responses use `Cache-Control: no-store`.
+- `404 Not Found`: preview missing, render incomplete, or render expired. Renders created before preview support may have no preview.
+- Fetching a preview does not start or extend the shorter download retention period.
+
+```sh
+curl --fail --output demo-001.png http://localhost:8080/renders/demo-001/preview
+```
+
 ## Retention
 
-Renders expire seven days after creation. A successful full, non-range GET makes a render eligible for deletion after 59 minutes; cleanup runs every minute. HEAD, partial, failed, or interrupted downloads do not shorten retention. An ID remains occupied until its render is deleted.
+Previews are stored alongside their videos in the same job directory and share the video's expiration and cleanup. Renders expire seven days after creation. A successful full, non-range GET makes a render eligible for deletion after 59 minutes; cleanup runs every minute. HEAD, partial, failed, or interrupted downloads do not shorten retention. An ID remains occupied until its render is deleted.

@@ -51,6 +51,7 @@ type Controller struct {
 	active  map[string]int
 	load    func([]byte, []byte, string) (*render.Plan, error)
 	render  func(context.Context, *render.Plan, func(render.Progress)) error
+	preview func(context.Context, string, string) error
 }
 
 func New(config Config) (*Controller, error) {
@@ -73,6 +74,7 @@ func New(config Config) (*Controller, error) {
 		dataDir: dir,
 		active:  make(map[string]int),
 		load:    render.FromBytes,
+		preview: render.GeneratePreview,
 		render: func(ctx context.Context, p *render.Plan, progress func(render.Progress)) error {
 			return p.RenderWithProgress(ctx, progress)
 		},
